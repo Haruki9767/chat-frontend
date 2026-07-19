@@ -111,3 +111,27 @@ button {
   font-size: 0.85rem;
   min-height: 1.2em;
 }
+
+.mode-toggle {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.25rem 0;
+}
+.mode-toggle button {
+  flex: 1;
+  padding: 0.3rem;
+  background: #eee;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+.mode-toggle button.active {
+  background: #1a1a1a;
+  color: white;
+  border-color: #1a1a1a;
+}
+#create-room-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+}
