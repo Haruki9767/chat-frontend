@@ -41,22 +41,34 @@ header {
 }
 
 .message {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.6rem;
 }
 
 .message.system {
-  color: #666;
-  font-size: 0.85rem;
+  color: #888;
+  font-size: 0.8rem;
   text-align: center;
+  font-style: italic;
 }
 
 .message .sender {
   font-size: 0.75rem;
-  color: #666;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 0.1rem;
+}
+
+.message.self .sender {
+  color: #0060df;
+  text-align: right;
 }
 
 .message.self {
   text-align: right;
+}
+
+.message.other .sender {
+  color: #1a7a3c;
 }
 
 #input-row {
