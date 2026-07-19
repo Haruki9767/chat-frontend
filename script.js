@@ -1,4 +1,5 @@
-const API_URL = typeof BACKEND_URL !== 'undefined' ? BACKEND_URL : 'https://chat.lime-paranoid.workers.dev';
+// Config - Backend URL from environment variable
+const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 let ws = null;
 let username = '';
 let room = '';
@@ -28,8 +29,12 @@ function joinChat() {
   username = usernameInput.value.trim() || 'Anonymous';
   room = roomInput.value.trim() || 'general';
   
-  // Build WebSocket URL using the environment variable
-  const wsUrl = `${API_URL.replace('http://', 'wss://').replace('https://', 'wss://')}/api/rooms/${room}/join?username=${encodeURIComponent(username)}`;
+  // ✅ CORRECT: Build WebSocket URL
+  const wsUrl = API_URL
+    .replace('http://', 'wss://')
+    .replace('https://', 'wss://') + `/api/rooms/${room}/join?username=${encodeURIComponent(username)}`;
+  
+  console.log('Connecting to:', wsUrl); // Debug: check the URL
   
   ws = new WebSocket(wsUrl);
   
@@ -158,7 +163,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// fuck off
+// Auto-join on load (optional)
 document.addEventListener('DOMContentLoaded', () => {
   usernameInput.value = '';
   roomInput.value = 'general';
