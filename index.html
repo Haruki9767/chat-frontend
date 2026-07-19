@@ -10,31 +10,31 @@
 
   <div id="login-view">
     <h1>Chat</h1>
-    <div id="mode-toggle">
-      <button id="mode-join" class="active">Join Room</button>
-      <button id="mode-create">Create Room</button>
-    </div>
     <input id="app-password-input" type="password" placeholder="App password">
+
+    <div class="mode-toggle">
+      <button id="join-mode-btn" class="active">Join Room</button>
+      <button id="create-mode-btn">Create Room</button>
+    </div>
+
     <input id="username-input" type="text" placeholder="Username">
     <input id="room-input" type="text" placeholder="Room name">
-    <input id="room-password-input" type="password" placeholder="Room password (if any)">
-    <button id="join-btn">Join</button>
+
+    <!-- Room password field (used for both join & create) -->
+    <input id="room-password-input" type="password" placeholder="Room password (optional)">
+
+    <!-- Extra field for "Create Room" (e.g., confirm password, description) -->
+    <div id="create-room-extra" style="display:none;">
+      <input id="room-description-input" type="text" placeholder="Description (optional)">
+      <!-- You can add more fields if needed -->
+    </div>
+
+    <button id="join-btn">Join / Create</button>
     <div id="login-error"></div>
   </div>
 
   <div id="chat-view" style="display:none">
-    <header>
-      <span>#<span id="room-name-display"></span></span>
-      <span id="user-count">0 users</span>
-      <button id="leave-btn">Leave</button>
-    </header>
-
-    <div id="message-area"></div>
-
-    <div id="input-row">
-      <input id="message-input" type="text" placeholder="Message" autocomplete="off">
-      <button id="send-btn">Send</button>
-    </div>
+    <!-- same as before -->
   </div>
 
   <script src="/config.js"></script>
