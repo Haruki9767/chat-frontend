@@ -10,9 +10,16 @@
 
   <div id="login-view">
     <h1>Chat</h1>
+    <div id="mode-toggle">
+      <button id="mode-join" class="active">Join Room</button>
+      <button id="mode-create">Create Room</button>
+    </div>
+    <input id="app-password-input" type="password" placeholder="App password">
     <input id="username-input" type="text" placeholder="Username">
-    <input id="room-input" type="text" placeholder="Room">
+    <input id="room-input" type="text" placeholder="Room name">
+    <input id="room-password-input" type="password" placeholder="Room password (if any)">
     <button id="join-btn">Join</button>
+    <div id="login-error"></div>
   </div>
 
   <div id="chat-view" style="display:none">
