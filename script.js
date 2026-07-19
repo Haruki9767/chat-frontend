@@ -1,11 +1,9 @@
-
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 let ws = null;
 let username = '';
 let room = '';
 let isCreateMode = false;
 
-// DOM elements
 const loginView = document.getElementById('login-view');
 const chatView = document.getElementById('chat-view');
 const appPasswordInput = document.getElementById('app-password-input');
@@ -20,36 +18,37 @@ const userCount = document.getElementById('user-count');
 const messageArea = document.getElementById('message-area');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
+const joinModeBtn = document.getElementById('join-mode-btn');
+const createModeBtn = document.getElementById('create-mode-btn');
+const createRoomExtra = document.getElementById('create-room-extra');
+const roomDescriptionInput = document.getElementById('room-description-input');
 
-const modeJoinBtn = document.getElementById('mode-join');
-const modeCreateBtn = document.getElementById('mode-create');
-
-// Mode toggle listeners
-modeJoinBtn.addEventListener('click', () => {
+joinModeBtn.addEventListener('click', () => {
   isCreateMode = false;
-  modeJoinBtn.classList.add('active');
-  modeCreateBtn.classList.remove('active');
-  joinBtn.textContent = 'Join';
-  roomInput.placeholder = 'Room name';
+  joinModeBtn.classList.add('active');
+  createModeBtn.classList.remove('active');
+  createRoomExtra.style.display = 'none';
+  joinBtn.textContent = 'Join Room';
 });
 
-modeCreateBtn.addEventListener('click', () => {
+createModeBtn.addEventListener('click', () => {
   isCreateMode = true;
-  modeCreateBtn.classList.add('active');
-  modeJoinBtn.classList.remove('active');
-  joinBtn.textContent = 'Create & Join';
-  roomInput.placeholder = 'New room name';
+  createModeBtn.classList.add('active');
+  joinModeBtn.classList.remove('active');
+  createRoomExtra.style.display = 'flex';
+  joinBtn.textContent = 'Create Room';
 });
 
-joinBtn.addEventListener('click', handleJoinOrCreate);
+joinBtn.addEventListener('click', joinChat);
 messageInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendMessage();
 });
 sendBtn.addEventListener('click', sendMessage);
 leaveBtn.addEventListener('click', leaveChat);
 
-async function handleJoinOrCreate() {
+async function joinChat() {
   loginError.textContent = '';
+
   const appPassword = appPasswordInput.value;
   const roomPassword = roomPasswordInput.value;
   username = usernameInput.value.trim() || 'Anonymous';
@@ -61,8 +60,9 @@ async function handleJoinOrCreate() {
   }
 
   if (isCreateMode) {
+    const description = roomDescriptionInput ? roomDescriptionInput.value.trim() : '';
     try {
-      const response = await fetch(`${API_URL}/api/rooms`, {
+      const resp = await fetch(API_URL + '/api/rooms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -70,28 +70,21 @@ async function handleJoinOrCreate() {
         },
         body: JSON.stringify({
           name: room,
+          description: description,
           username: username,
-          roomPassword: roomPassword
+          roomPassword: roomPassword || undefined
         })
       });
-
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        loginError.textContent = data.error || 'Failed to create room';
-        return;
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Room creation failed');
       }
-     
-      room = data.roomId; 
-    } catch (err) {
-      loginError.textContent = 'Error creating room: ' + err.message;
+    } catch (e) {
+      loginError.textContent = 'Create failed: ' + e.message;
       return;
     }
   }
 
-  connectToWebSocket(appPassword, roomPassword);
-}
-
-function connectToWebSocket(appPassword, roomPassword) {
   const params = new URLSearchParams({
     username,
     appPassword,
@@ -102,15 +95,13 @@ function connectToWebSocket(appPassword, roomPassword) {
     .replace('http://', 'wss://')
     .replace('https://', 'wss://') + `/api/rooms/${room}/join?${params.toString()}`;
 
-  console.log('Connecting to:', wsUrl.replace(/appPassword=[^&]+/, 'appPassword=REDACTED').replace(/roomPassword=[^&]+/, 'roomPassword=REDACTED'));
-
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     loginView.style.display = 'none';
     chatView.style.display = 'flex';
     roomNameDisplay.textContent = room;
-    addSystemMessage(`Connected to #${room}`);
+    addSystemMessage('Connected to #' + room);
   };
 
   ws.onmessage = (event) => {
@@ -150,21 +141,21 @@ function handleMessage(data) {
       break;
 
     case 'user-joined':
-      addSystemMessage(`${data.username} joined`);
+      addSystemMessage(data.username + ' joined');
       updateUserCount('+1');
       break;
 
     case 'user-left':
-      addSystemMessage(`${data.username} left`);
+      addSystemMessage(data.username + ' left');
       updateUserCount('-1');
       break;
 
     case 'participants-list':
-      userCount.textContent = `${data.participants.length} users`;
+      userCount.textContent = data.participants.length + ' users';
       break;
 
     case 'error':
-      addSystemMessage(`Error: ${data.message}`);
+      addSystemMessage('Error: ' + data.message);
       break;
 
     default:
@@ -181,10 +172,10 @@ function addMessage(sender, text, isSystem = false) {
     div.textContent = text;
   } else if (sender === username) {
     div.classList.add('self');
-    div.innerHTML = `<div class="sender">You</div><div>${escapeHtml(text)}</div>`;
+    div.innerHTML = '<div class="sender">You</div><div>' + escapeHtml(text) + '</div>';
   } else {
     div.classList.add('other');
-    div.innerHTML = `<div class="sender">${escapeHtml(sender)}</div><div>${escapeHtml(text)}</div>`;
+    div.innerHTML = '<div class="sender">' + escapeHtml(sender) + '</div><div>' + escapeHtml(text) + '</div>';
   }
 
   messageArea.appendChild(div);
@@ -225,7 +216,7 @@ function leaveChat() {
 function updateUserCount(delta) {
   const current = parseInt(userCount.textContent) || 0;
   const newCount = delta === '+1' ? current + 1 : Math.max(0, current - 1);
-  userCount.textContent = `${newCount} users`;
+  userCount.textContent = newCount + ' users';
 }
 
 function escapeHtml(text) {
@@ -237,4 +228,6 @@ function escapeHtml(text) {
 document.addEventListener('DOMContentLoaded', () => {
   usernameInput.value = '';
   roomInput.value = 'general';
+  joinModeBtn.classList.add('active');
+  createRoomExtra.style.display = 'none';
 });
