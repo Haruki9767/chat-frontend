@@ -28,23 +28,22 @@ leaveBtn.addEventListener('click', leaveChat);
 function joinChat() {
   username = usernameInput.value.trim() || 'Anonymous';
   room = roomInput.value.trim() || 'general';
-  
-  // ✅ CORRECT: Build WebSocket URL
+
   const wsUrl = API_URL
     .replace('http://', 'wss://')
     .replace('https://', 'wss://') + `/api/rooms/${room}/join?username=${encodeURIComponent(username)}`;
-  
-  console.log('Connecting to:', wsUrl); // Debug: check the URL
-  
+
+  console.log('Connecting to:', wsUrl);
+
   ws = new WebSocket(wsUrl);
-  
+
   ws.onopen = () => {
     loginView.style.display = 'none';
     chatView.style.display = 'flex';
     roomNameDisplay.textContent = room;
     addSystemMessage(`Connected to #${room}`);
   };
-  
+
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
@@ -53,13 +52,13 @@ function joinChat() {
       console.error('Parse error:', e);
     }
   };
-  
+
   ws.onclose = () => {
     addSystemMessage('Disconnected');
     chatView.style.display = 'none';
     loginView.style.display = 'flex';
   };
-  
+
   ws.onerror = (err) => {
     console.error('WebSocket error:', err);
     addSystemMessage('Connection error');
@@ -71,31 +70,33 @@ function handleMessage(data) {
     case 'chat-message':
       addMessage(data.username, data.message);
       break;
-      
+
     case 'room-history':
       data.messages.forEach(msg => {
-        addMessage(msg.username, msg.message, msg.type === 'server');
+        // Only true system events are centered/muted; regular chat
+        // messages always show their sender, even on history replay.
+        addMessage(msg.username, msg.message, false);
       });
       break;
-      
+
     case 'user-joined':
       addSystemMessage(`${data.username} joined`);
       updateUserCount('+1');
       break;
-      
+
     case 'user-left':
       addSystemMessage(`${data.username} left`);
       updateUserCount('-1');
       break;
-      
+
     case 'participants-list':
       userCount.textContent = `${data.participants.length} users`;
       break;
-      
+
     case 'error':
       addSystemMessage(`Error: ${data.message}`);
       break;
-      
+
     default:
       console.log('Unknown message:', data);
   }
@@ -104,7 +105,7 @@ function handleMessage(data) {
 function addMessage(sender, text, isSystem = false) {
   const div = document.createElement('div');
   div.className = 'message';
-  
+
   if (isSystem || sender === 'system') {
     div.classList.add('system');
     div.textContent = text;
@@ -115,7 +116,7 @@ function addMessage(sender, text, isSystem = false) {
     div.classList.add('other');
     div.innerHTML = `<div class="sender">${escapeHtml(sender)}</div><div>${escapeHtml(text)}</div>`;
   }
-  
+
   messageArea.appendChild(div);
   messageArea.scrollTop = messageArea.scrollHeight;
 }
@@ -131,12 +132,12 @@ function addSystemMessage(text) {
 function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-  
+
   ws.send(JSON.stringify({
     type: 'chat-message',
     message: text
   }));
-  
+
   messageInput.value = '';
 }
 
