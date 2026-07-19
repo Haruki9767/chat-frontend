@@ -17,6 +17,24 @@ body {
   margin: 4rem auto;
 }
 
+#mode-toggle {
+  display: flex;
+  margin-bottom: 0.5rem;
+}
+
+#mode-toggle button {
+  flex: 1;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+#mode-toggle button.active {
+  background: #0060df;
+  color: white;
+  border-color: #0060df;
+}
+
 #chat-view {
   display: flex;
   flex-direction: column;
@@ -86,4 +104,10 @@ input {
 
 button {
   padding: 0.4rem 0.8rem;
+}
+
+#login-error {
+  color: #c0392b;
+  font-size: 0.85rem;
+  min-height: 1.2em;
 }
