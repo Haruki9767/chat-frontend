@@ -3,13 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Paranoid Chat</title>
+<title>Chat</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+ 
+  <div id="gate-view">
+    <h1>Chat</h1>
+    <input id="gate-password-input" type="password" placeholder="App password">
+    <button id="gate-submit-btn">Continue</button>
+    <div id="gate-error"></div>
+  </div>
 
-  <div id="auth-view">
+  
+  <div id="auth-view" style="display:none">
     <h1>Chat</h1>
     <div id="auth-mode-toggle">
       <button id="auth-login-btn" class="mode-active" type="button">Log In</button>
@@ -22,7 +30,7 @@
     <div id="auth-error"></div>
   </div>
 
-
+  
   <div id="room-view" style="display:none">
     <div id="account-bar">
       Logged in as <span id="account-display"></span>
@@ -56,6 +64,11 @@
     </header>
 
     <div id="message-area"></div>
+
+    <div id="reply-preview" style="display:none">
+      <div id="reply-preview-text"></div>
+      <button id="reply-cancel-btn" type="button">✕</button>
+    </div>
 
     <div id="input-row">
       <input id="message-input" type="text" placeholder="Message" autocomplete="off" maxlength="2000">
