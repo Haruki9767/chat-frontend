@@ -4,7 +4,6 @@ let account = null; // { accountId, username, displayTag, color }
 let sessionToken = localStorage.getItem('sessionToken') || null;
 let appPassword = sessionStorage.getItem('appPassword') || null;
 
-
 const gateView = document.getElementById('gate-view');
 const gatePasswordInput = document.getElementById('gate-password-input');
 const gateSubmitBtn = document.getElementById('gate-submit-btn');
@@ -13,19 +12,45 @@ const authView = document.getElementById('auth-view');
 const roomView = document.getElementById('room-view');
 const chatView = document.getElementById('chat-view');
 
-gateSubmitBtn.addEventListener('click', () => {
+gateSubmitBtn.addEventListener('click', async () => {
   const value = gatePasswordInput.value;
+  gateError.textContent = '';
   if (!value) {
     gateError.textContent = 'Enter the app password';
     return;
   }
-  // Not verified client-side — the real check happens on the first
-  // actual register/login call to the server. If it's wrong, that call
-  // fails and the person is sent back to this screen.
-  appPassword = value;
-  sessionStorage.setItem('appPassword', value);
-  gateView.style.display = 'none';
-  showAuthOrResume();
+
+  gateSubmitBtn.disabled = true;
+  gateSubmitBtn.textContent = 'Checking...';
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/verify-gate`, {
+      method: 'POST',
+      headers: { 'X-App-Password': value },
+    });
+    const data = await res.json();
+
+    if (res.status === 429) {
+      gateError.textContent = data.error || 'Too many attempts — please wait.';
+      return;
+    }
+    if (!res.ok || !data.success) {
+      gateError.textContent = 'Incorrect app password';
+      gatePasswordInput.value = '';
+      return;
+    }
+
+    appPassword = value;
+    sessionStorage.setItem('appPassword', value);
+    gateView.style.display = 'none';
+    showAuthOrResume();
+  } catch (err) {
+    console.error('Gate check error:', err);
+    gateError.textContent = 'Network error — could not reach server';
+  } finally {
+    gateSubmitBtn.disabled = false;
+    gateSubmitBtn.textContent = 'Continue';
+  }
 });
 gatePasswordInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') gateSubmitBtn.click();
