@@ -2,11 +2,54 @@ const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 let ws = null;
 let account = null; // { accountId, username, displayTag, color }
 let sessionToken = localStorage.getItem('sessionToken') || null;
+let appPassword = sessionStorage.getItem('appPassword') || null;
 
-// ---- DOM ----
+
+const gateView = document.getElementById('gate-view');
+const gatePasswordInput = document.getElementById('gate-password-input');
+const gateSubmitBtn = document.getElementById('gate-submit-btn');
+const gateError = document.getElementById('gate-error');
 const authView = document.getElementById('auth-view');
 const roomView = document.getElementById('room-view');
 const chatView = document.getElementById('chat-view');
+
+gateSubmitBtn.addEventListener('click', () => {
+  const value = gatePasswordInput.value;
+  if (!value) {
+    gateError.textContent = 'Enter the app password';
+    return;
+  }
+  // Not verified client-side — the real check happens on the first
+  // actual register/login call to the server. If it's wrong, that call
+  // fails and the person is sent back to this screen.
+  appPassword = value;
+  sessionStorage.setItem('appPassword', value);
+  gateView.style.display = 'none';
+  showAuthOrResume();
+});
+gatePasswordInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') gateSubmitBtn.click();
+});
+
+function showAuthOrResume() {
+  if (sessionToken) {
+    tryResumeSession();
+  } else {
+    showAuthView();
+  }
+}
+
+function backToGate(message) {
+  appPassword = null;
+  sessionStorage.removeItem('appPassword');
+  gateError.textContent = message || '';
+  gatePasswordInput.value = '';
+  authView.style.display = 'none';
+  roomView.style.display = 'none';
+  chatView.style.display = 'none';
+  gateView.style.display = 'block';
+}
+
 
 const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
@@ -38,6 +81,11 @@ const userCount = document.getElementById('user-count');
 const messageArea = document.getElementById('message-area');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
+const replyPreview = document.getElementById('reply-preview');
+const replyPreviewText = document.getElementById('reply-preview-text');
+const replyCancelBtn = document.getElementById('reply-cancel-btn');
+
+let replyingTo = null; // { id, username, snippet }
 
 // ---- Deterministic color, mirrors the server's algorithm, used so
 // history-replayed messages (which don't carry a color from D1) still
@@ -93,11 +141,18 @@ authSubmitBtn.addEventListener('click', async () => {
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Password': appPassword || '',
+      },
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
 
+    if (res.status === 401 && data.error === 'Invalid app password') {
+      backToGate('Incorrect app password — try again');
+      return;
+    }
     if (res.status === 429) {
       authError.textContent = data.error || 'Too many attempts — please wait.';
     } else if (!res.ok || !data.success) {
@@ -330,11 +385,16 @@ function connectWebSocket(roomNumber, roomLabel, roomPassword) {
 function handleMessage(data) {
   switch (data.type) {
     case 'chat-message':
-      addMessage(data.userId, data.username, data.message, false, data.timestamp, data.color);
+      addMessage(data.id, data.userId, data.username, data.message, false, data.timestamp, data.color, data.replyTo);
       break;
     case 'room-history':
       data.messages.forEach(msg => {
-        addMessage(msg.user_id || msg.userId, msg.username, msg.message, false, msg.timestamp);
+        const replyTo = msg.replyTo || (msg.replied_to_id ? {
+          id: msg.replied_to_id,
+          username: msg.replied_to_username,
+          snippet: msg.replied_to_snippet
+        } : null);
+        addMessage(msg.id, msg.user_id || msg.userId, msg.username, msg.message, false, msg.timestamp, null, replyTo);
       });
       break;
     case 'user-joined':
@@ -359,27 +419,52 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function addMessage(userId, sender, text, isSystem, timestamp, colorFromServer) {
+function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServer, replyTo) {
   const div = document.createElement('div');
   div.className = 'message';
+  if (id) div.dataset.messageId = id;
+  if (sender) div.dataset.sender = sender;
+  if (text) div.dataset.text = text;
+
   const timeStr = formatTime(timestamp);
   const isSelf = account && sender === `${account.username}#${account.displayTag}`;
   const color = colorFromServer || (userId ? colorForUserId(userId) : '#333');
+
+  const replyHtml = replyTo
+    ? `<div class="reply-quote">↪ ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
+    : '';
 
   if (isSystem || sender === 'system') {
     div.classList.add('system');
     div.textContent = text;
   } else if (isSelf) {
     div.classList.add('self');
-    div.innerHTML = `<div class="sender" style="color:${color}">You <span class="time">${timeStr}</span></div><div>${escapeHtml(text)}</div>`;
+    div.innerHTML = `<div class="sender" style="color:${color}">You <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
   } else {
     div.classList.add('other');
-    div.innerHTML = `<div class="sender" style="color:${color}">${escapeHtml(sender)} <span class="time">${timeStr}</span></div><div>${escapeHtml(text)}</div>`;
+    div.innerHTML = `<div class="sender" style="color:${color}">${escapeHtml(sender)} <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
+  }
+
+  // Click a message to reply to it (only real chat messages, not system lines)
+  if (!isSystem && sender !== 'system' && id) {
+    div.addEventListener('click', () => startReply(id, sender, text));
   }
 
   messageArea.appendChild(div);
   messageArea.scrollTop = messageArea.scrollHeight;
 }
+
+function startReply(id, sender, text) {
+  replyingTo = { id, username: sender, snippet: text.slice(0, 120) };
+  replyPreviewText.textContent = `Replying to ${sender}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`;
+  replyPreview.style.display = 'flex';
+  messageInput.focus();
+}
+
+replyCancelBtn.addEventListener('click', () => {
+  replyingTo = null;
+  replyPreview.style.display = 'none';
+});
 
 function addSystemMessage(text) {
   const div = document.createElement('div');
@@ -399,8 +484,16 @@ function sendMessage() {
     addSystemMessage('⚠ Message too long');
     return;
   }
-  ws.send(JSON.stringify({ type: 'chat-message', message: text }));
+
+  const payload = { type: 'chat-message', message: text };
+  if (replyingTo) {
+    payload.replyTo = replyingTo.id;
+  }
+
+  ws.send(JSON.stringify(payload));
   messageInput.value = '';
+  replyingTo = null;
+  replyPreview.style.display = 'none';
 }
 
 leaveBtn.addEventListener('click', leaveChat);
@@ -424,4 +517,12 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-tryResumeSession();
+// Bootstrap: if this tab already passed the gate earlier in the session
+// (appPassword sitting in sessionStorage), skip straight to resuming/auth.
+// Otherwise show the gate screen first — nothing else is reachable.
+if (appPassword) {
+  gateView.style.display = 'none';
+  showAuthOrResume();
+} else {
+  gateView.style.display = 'block';
+}
