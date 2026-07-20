@@ -120,3 +120,59 @@ button { padding: 0.4rem 0.8rem; }
   font-size: 0.85rem;
   min-height: 1.2em;
 }
+
+#gate-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 300px;
+  margin: 5rem auto;
+}
+
+#gate-error {
+  color: #c0392b;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+
+.message.other, .message.self {
+  cursor: pointer;
+}
+.message.other:hover, .message.self:hover {
+  opacity: 0.85;
+}
+
+.reply-quote {
+  font-size: 0.75rem;
+  color: #666;
+  background: #f2f2f2;
+  border-left: 3px solid #999;
+  padding: 0.2rem 0.4rem;
+  margin: 0.15rem 0;
+  border-radius: 2px;
+}
+
+#reply-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f2f2f2;
+  border-left: 3px solid #333;
+  padding: 0.3rem 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+
+#reply-preview-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#reply-cancel-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 0.3rem;
+}
