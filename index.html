@@ -3,35 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat</title>
+<title>Paranoid Chat</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div id="login-view">
-    <h1>Paranoid Chat- Welcome!</h1>
-    <input id="app-password-input" type="password" placeholder="App password">
 
-    <div class="mode-toggle">
-      <button id="join-mode-btn" class="active">Join Room</button>
-      <button id="create-mode-btn">Create Room</button>
+  <div id="auth-view">
+    <h1>Chat</h1>
+    <div id="auth-mode-toggle">
+      <button id="auth-login-btn" class="mode-active" type="button">Log In</button>
+      <button id="auth-register-btn" type="button">Sign Up</button>
+    </div>
+    <input id="auth-username-input" type="text" placeholder="Username" autocomplete="username">
+    <input id="auth-password-input" type="password" placeholder="Password" autocomplete="current-password">
+    <p id="auth-hint" class="hint"></p>
+    <button id="auth-submit-btn">Log In</button>
+    <div id="auth-error"></div>
+  </div>
+
+
+  <div id="room-view" style="display:none">
+    <div id="account-bar">
+      Logged in as <span id="account-display"></span>
+      <button id="logout-btn">Log out</button>
+      <button id="delete-account-btn">Delete account</button>
     </div>
 
-    <input id="username-input" type="text" placeholder="Username">
-    <input id="room-input" type="text" placeholder="Room name">
-    <input id="room-password-input" type="password" placeholder="Room password (optional)">
-
-    <div id="create-room-extra" style="display:none;">
-      <input id="room-description-input" type="text" placeholder="Description (optional)">
+    <div id="mode-toggle">
+      <button id="mode-join-btn" class="mode-active" type="button">Join Room</button>
+      <button id="mode-create-btn" type="button">Create Room</button>
     </div>
 
-    <button id="join-btn">Join Room</button>
-    <div id="login-error"></div>
+    <input id="room-number-input" type="text" inputmode="numeric" placeholder="Room number (e.g. 1254)">
+    <input id="room-password-input" type="password" placeholder="Room password">
+
+    <div id="create-only" style="display:none">
+      <input id="room-name-input" type="text" placeholder="Room name (label, not unique)">
+      <input id="new-room-password-input" type="password" placeholder="Set a room password (required)">
+    </div>
+
+    <button id="join-btn">Join</button>
+    <button id="create-btn" style="display:none">Create &amp; Join</button>
+    <div id="room-error"></div>
   </div>
 
   <div id="chat-view" style="display:none">
     <header>
-      <span>#<span id="room-name-display"></span></span>
+      <span>#<span id="room-name-display"></span> <span id="room-number-display"></span></span>
       <span id="user-count">0 users</span>
       <button id="leave-btn">Leave</button>
     </header>
@@ -39,7 +58,7 @@
     <div id="message-area"></div>
 
     <div id="input-row">
-      <input id="message-input" type="text" placeholder="Message" autocomplete="off">
+      <input id="message-input" type="text" placeholder="Message" autocomplete="off" maxlength="2000">
       <button id="send-btn">Send</button>
     </div>
   </div>
