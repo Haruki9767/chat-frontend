@@ -1,4 +1,4 @@
-# Paranoid Chat
+# Paranoid Chat - Beta version currently
 
 A small, private, real-time chat app built for a closed group of friends — not a public product. There's no public room list and no way to stumble into a conversation that isn't yours.
 
