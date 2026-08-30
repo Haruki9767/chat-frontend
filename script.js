@@ -1,5 +1,6 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 let ws = null;
+let intentionalClose = false; // set right before we call ws.close() ourselves, so onclose can tell a deliberate leave apart from a real disconnect/failure
 let account = null; // { accountId, username, displayTag, color }
 let sessionToken = localStorage.getItem('sessionToken') || null;
 let appPassword = sessionStorage.getItem('appPassword') || null;
@@ -393,7 +394,26 @@ function connectWebSocket(roomNumber, roomLabel, roomPassword) {
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (event) => {
+    // Server closes with 4001 specifically when this account was just
+    // deleted (see ChatRoom.kickAccount) — surface that plainly instead of
+    // letting it look like an ordinary disconnect or a failed join.
+    if (event.code === 4001) {
+      ws = null;
+      localStorage.removeItem('sessionToken');
+      sessionToken = null;
+      account = null;
+      chatView.style.display = 'none';
+      showAuthView();
+      authError.textContent = 'This account was deleted — connection closed.';
+      return;
+    }
+
+    if (intentionalClose) {
+      intentionalClose = false;
+      return;
+    }
+
     if (chatView.style.display === 'none' || chatView.style.display === '') {
       roomError.textContent = 'Connection failed — check room number/password';
       resetCreateBtn();
@@ -523,7 +543,7 @@ function sendMessage() {
 
 leaveBtn.addEventListener('click', leaveChat);
 function leaveChat() {
-  if (ws) { ws.close(); ws = null; }
+  if (ws) { intentionalClose = true; ws.close(); ws = null; }
   chatView.style.display = 'none';
   roomView.style.display = 'block';
   messageArea.innerHTML = '';
