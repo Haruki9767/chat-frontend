@@ -173,6 +173,16 @@ authSubmitBtn.addEventListener('click', async () => {
   const password = authPasswordInput.value;
   const hcaptchaToken = getHcaptchaToken();
 
+  // ===== DEBUG LOGGING START =====
+  console.log('=== Auth Submit Debug ===');
+  console.log('Username:', username);
+  console.log('Password:', password ? 'provided (' + password.length + ' chars)' : 'MISSING');
+  console.log('hCaptcha token:', hcaptchaToken ? hcaptchaToken.substring(0, 50) + '...' : 'EMPTY');
+  console.log('hCaptcha token length:', hcaptchaToken.length);
+  console.log('Auth mode:', authMode);
+  console.log('=== End Auth Submit Debug ===');
+  // ===== DEBUG LOGGING END =====
+
   if (!username || !password) {
     authError.textContent = 'Username and password required';
     return;
@@ -188,12 +198,18 @@ authSubmitBtn.addEventListener('click', async () => {
   const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
 
   try {
+    console.log('Sending request to:', `${API_URL}${endpoint}`); // DEBUG
+    console.log('Request body:', JSON.stringify({ username, password: '***', hcaptchaToken: hcaptchaToken.substring(0, 50) + '...' })); // DEBUG
+
     const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, hcaptchaToken }),
     });
     const data = await res.json();
+
+    console.log('Response status:', res.status); // DEBUG
+    console.log('Response data:', data); // DEBUG
 
     if (res.status === 429) {
       authError.textContent = data.error || 'Too many attempts — please wait.';
