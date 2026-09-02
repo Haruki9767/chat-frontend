@@ -1,82 +1,30 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
+
+// TODO(frontend config): set this to your actual hCaptcha site key before
+// deploying. This is the PUBLIC key — safe to embed client-side (unlike
+// the secret key, which only ever lives on the separate hCaptcha
+// verification Worker, never here). Without a real value, the widget
+// will not render and login/register will fail at verifyHcaptcha() on
+// the backend, since it always fails closed on a missing/invalid token.
+const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
+
 let ws = null;
 let intentionalClose = false; // set right before we call ws.close() ourselves, so onclose can tell a deliberate leave apart from a real disconnect/failure
 let account = null; // { accountId, username, displayTag, color }
 let sessionToken = localStorage.getItem('sessionToken') || null;
-let appPassword = sessionStorage.getItem('appPassword') || null;
 
-const gateView = document.getElementById('gate-view');
-const gatePasswordInput = document.getElementById('gate-password-input');
-const gateSubmitBtn = document.getElementById('gate-submit-btn');
-const gateError = document.getElementById('gate-error');
+// Current room's info, populated once join succeeds — needed by the
+// "Manage" panel (owner-only actions) and to label the chat header
+// correctly per room type.
+let currentRoom = null; // { roomCode, name, roomType, isOwner }
+
 const authView = document.getElementById('auth-view');
 const roomView = document.getElementById('room-view');
 const chatView = document.getElementById('chat-view');
+const manageRoomView = document.getElementById('manage-room-view');
+const ownerKeyModal = document.getElementById('owner-key-modal');
 
-gateSubmitBtn.addEventListener('click', async () => {
-  const value = gatePasswordInput.value;
-  gateError.textContent = '';
-  if (!value) {
-    gateError.textContent = 'Enter the app password';
-    return;
-  }
-
-  gateSubmitBtn.disabled = true;
-  gateSubmitBtn.textContent = 'Checking...';
-
-  try {
-    const res = await fetch(`${API_URL}/api/auth/verify-gate`, {
-      method: 'POST',
-      headers: { 'X-App-Password': value },
-    });
-    const data = await res.json();
-
-    if (res.status === 429) {
-      gateError.textContent = data.error || 'Too many attempts — please wait.';
-      return;
-    }
-    if (!res.ok || !data.success) {
-      gateError.textContent = 'Incorrect app password';
-      gatePasswordInput.value = '';
-      return;
-    }
-
-    appPassword = value;
-    sessionStorage.setItem('appPassword', value);
-    gateView.style.display = 'none';
-    showAuthOrResume();
-  } catch (err) {
-    console.error('Gate check error:', err);
-    gateError.textContent = 'Network error — could not reach server';
-  } finally {
-    gateSubmitBtn.disabled = false;
-    gateSubmitBtn.textContent = 'Continue';
-  }
-});
-gatePasswordInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') gateSubmitBtn.click();
-});
-
-function showAuthOrResume() {
-  if (sessionToken) {
-    tryResumeSession();
-  } else {
-    showAuthView();
-  }
-}
-
-function backToGate(message) {
-  appPassword = null;
-  sessionStorage.removeItem('appPassword');
-  gateError.textContent = message || '';
-  gatePasswordInput.value = '';
-  authView.style.display = 'none';
-  roomView.style.display = 'none';
-  chatView.style.display = 'none';
-  gateView.style.display = 'block';
-}
-
-
+// ---- Auth ----
 const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
@@ -89,20 +37,38 @@ const accountDisplay = document.getElementById('account-display');
 const logoutBtn = document.getElementById('logout-btn');
 const deleteAccountBtn = document.getElementById('delete-account-btn');
 
+// ---- Room join/create ----
 const modeJoinBtn = document.getElementById('mode-join-btn');
 const modeCreateBtn = document.getElementById('mode-create-btn');
-const roomNumberInput = document.getElementById('room-number-input');
+const joinPanel = document.getElementById('join-panel');
+const createPanel = document.getElementById('create-panel');
+const roomCodeInput = document.getElementById('room-code-input');
 const roomPasswordInput = document.getElementById('room-password-input');
-const createOnly = document.getElementById('create-only');
+const joinTokenInput = document.getElementById('join-token-input');
+const joinBtn = document.getElementById('join-btn');
+
+const typePasswordBtn = document.getElementById('type-password-btn');
+const typeEphemeralBtn = document.getElementById('type-ephemeral-btn');
+const typeE2eeBtn = document.getElementById('type-e2ee-btn');
+const roomTypeHint = document.getElementById('room-type-hint');
 const roomNameInput = document.getElementById('room-name-input');
 const newRoomPasswordInput = document.getElementById('new-room-password-input');
-const joinBtn = document.getElementById('join-btn');
+const gatedRoomPasswordWrap = document.getElementById('gated-room-password-wrap');
+const gatedRoomAppPasswordInput = document.getElementById('gated-room-app-password-input');
 const createBtn = document.getElementById('create-btn');
 const roomError = document.getElementById('room-error');
 
+// ---- Owner key modal (shown once, at e2ee room creation) ----
+const ownerKeyValue = document.getElementById('owner-key-value');
+const ownerKeyCopyBtn = document.getElementById('owner-key-copy-btn');
+const ownerKeyCloseBtn = document.getElementById('owner-key-close-btn');
+
+// ---- Chat ----
 const leaveBtn = document.getElementById('leave-btn');
+const manageRoomBtn = document.getElementById('manage-room-btn');
 const roomNameDisplay = document.getElementById('room-name-display');
-const roomNumberDisplay = document.getElementById('room-number-display');
+const roomCodeDisplay = document.getElementById('room-code-display');
+const roomTypeBadge = document.getElementById('room-type-badge');
 const userCount = document.getElementById('user-count');
 const messageArea = document.getElementById('message-area');
 const messageInput = document.getElementById('message-input');
@@ -110,6 +76,21 @@ const sendBtn = document.getElementById('send-btn');
 const replyPreview = document.getElementById('reply-preview');
 const replyPreviewText = document.getElementById('reply-preview-text');
 const replyCancelBtn = document.getElementById('reply-cancel-btn');
+
+// ---- Manage room panel ----
+const manageCloseBtn = document.getElementById('manage-close-btn');
+const managePasswordSection = document.getElementById('manage-password-section');
+const manageCurrentPasswordInput = document.getElementById('manage-current-password-input');
+const manageNewPasswordInput = document.getElementById('manage-new-password-input');
+const manageChangePasswordBtn = document.getElementById('manage-change-password-btn');
+const managePasswordError = document.getElementById('manage-password-error');
+const manageE2eeKeySection = document.getElementById('manage-e2ee-key-section');
+const manageSecretInput = document.getElementById('manage-secret-input');
+const manageMintTokenBtn = document.getElementById('manage-mint-token-btn');
+const manageNewTokenBox = document.getElementById('manage-new-token-box');
+const manageNewTokenValue = document.getElementById('manage-new-token-value');
+const manageTokensList = document.getElementById('manage-tokens-list');
+const manageTokensError = document.getElementById('manage-tokens-error');
 
 let replyingTo = null; // { id, username, snippet }
 
@@ -129,6 +110,41 @@ function colorForUserId(userId) {
   }
   return USER_COLORS[hash % USER_COLORS.length];
 }
+
+// Reads the hCaptcha widget's current response token. Returns '' if the
+// widget hasn't rendered (e.g. HCAPTCHA_SITE_KEY is blank) or hasn't been
+// solved yet — the backend will correctly reject an empty token rather
+// than this needing its own client-side validation.
+function getHcaptchaToken() {
+  if (typeof hcaptcha === 'undefined') return '';
+  try {
+    return hcaptcha.getResponse() || '';
+  } catch {
+    return '';
+  }
+}
+function resetHcaptcha() {
+  if (typeof hcaptcha === 'undefined') return;
+  try { hcaptcha.reset(); } catch {}
+}
+
+// The hCaptcha script auto-renders any element with class="h-captcha" and
+// a data-sitekey attribute the moment it loads, so data-sitekey has to be
+// set on the container BEFORE that script runs — done here, at the top
+// of this file, rather than waiting for a DOMContentLoaded-style event,
+// since api.js is loaded with defer (runs after the DOM is parsed but the
+// exact ordering relative to this script depends on load timing either
+// way — setting the attribute as early as possible is the safe choice).
+(function initHcaptchaWidget() {
+  const el = document.getElementById('auth-hcaptcha');
+  const warning = document.getElementById('auth-hcaptcha-missing-warning');
+  if (!HCAPTCHA_SITE_KEY) {
+    if (warning) warning.style.display = 'block';
+    if (el) el.style.display = 'none';
+    return;
+  }
+  if (el) el.setAttribute('data-sitekey', HCAPTCHA_SITE_KEY);
+})();
 
 // ---- Auth mode toggle ----
 let authMode = 'login';
@@ -155,9 +171,16 @@ authSubmitBtn.addEventListener('click', async () => {
   authError.textContent = '';
   const username = authUsernameInput.value.trim();
   const password = authPasswordInput.value;
+  const hcaptchaToken = getHcaptchaToken();
 
   if (!username || !password) {
     authError.textContent = 'Username and password required';
+    return;
+  }
+  if (!hcaptchaToken) {
+    authError.textContent = HCAPTCHA_SITE_KEY
+      ? 'Please complete the captcha'
+      : 'hCaptcha is not configured (see HCAPTCHA_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
     return;
   }
 
@@ -167,18 +190,11 @@ authSubmitBtn.addEventListener('click', async () => {
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Password': appPassword || '',
-      },
-      body: JSON.stringify({ username, password }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, hcaptchaToken }),
     });
     const data = await res.json();
 
-    if (res.status === 401 && data.error === 'Invalid app password') {
-      backToGate('Incorrect app password — try again');
-      return;
-    }
     if (res.status === 429) {
       authError.textContent = data.error || 'Too many attempts — please wait.';
     } else if (!res.ok || !data.success) {
@@ -194,6 +210,7 @@ authSubmitBtn.addEventListener('click', async () => {
     authError.textContent = 'Network error';
   } finally {
     authSubmitBtn.disabled = false;
+    resetHcaptcha();
   }
 });
 
@@ -257,9 +274,10 @@ async function tryResumeSession() {
 }
 
 function showAuthView() {
-  authView.style.display = 'block';
+  authView.style.display = 'flex';
   roomView.style.display = 'none';
   chatView.style.display = 'none';
+  manageRoomView.style.display = 'none';
   authUsernameInput.value = '';
   authPasswordInput.value = '';
   setAuthMode('login');
@@ -267,8 +285,9 @@ function showAuthView() {
 
 function showRoomView() {
   authView.style.display = 'none';
-  roomView.style.display = 'block';
+  roomView.style.display = 'flex';
   chatView.style.display = 'none';
+  manageRoomView.style.display = 'none';
   accountDisplay.textContent = `${account.username}#${account.displayTag}`;
   setRoomMode('join');
 }
@@ -286,47 +305,86 @@ function setRoomMode(m) {
   if (m === 'join') {
     modeJoinBtn.classList.add('mode-active');
     modeCreateBtn.classList.remove('mode-active');
-    createOnly.style.display = 'none';
-    roomNumberInput.style.display = 'block';
-    roomPasswordInput.style.display = 'block';
-    joinBtn.style.display = 'block';
-    createBtn.style.display = 'none';
+    joinPanel.style.display = 'flex';
+    createPanel.style.display = 'none';
   } else {
     modeCreateBtn.classList.add('mode-active');
     modeJoinBtn.classList.remove('mode-active');
-    createOnly.style.display = 'block';
-    roomNumberInput.style.display = 'none';
-    roomPasswordInput.style.display = 'none';
-    joinBtn.style.display = 'none';
-    createBtn.style.display = 'block';
+    joinPanel.style.display = 'none';
+    createPanel.style.display = 'flex';
+    setCreateRoomType('password');
   }
+}
+
+// ---- Room type selector (create panel) ----
+let createRoomType = 'password';
+typePasswordBtn.addEventListener('click', () => setCreateRoomType('password'));
+typeEphemeralBtn.addEventListener('click', () => setCreateRoomType('ephemeral'));
+typeE2eeBtn.addEventListener('click', () => setCreateRoomType('e2ee'));
+
+const ROOM_TYPE_HINTS = {
+  password: 'A standard room, protected by the password you set below.',
+  ephemeral: 'Deletes itself and everyone in it after 24 hours. Max 10 people. No room password. Requires the app password to create.',
+  e2ee: 'End-to-end encrypted — messages are never stored on the server, not even briefly. No room password; instead you\u2019ll get a one-time owner key after creating it. Requires the app password to create.',
+};
+
+function setCreateRoomType(t) {
+  createRoomType = t;
+  roomError.textContent = '';
+  [typePasswordBtn, typeEphemeralBtn, typeE2eeBtn].forEach(b => b.classList.remove('mode-active'));
+  ({ password: typePasswordBtn, ephemeral: typeEphemeralBtn, e2ee: typeE2eeBtn })[t].classList.add('mode-active');
+  roomTypeHint.textContent = ROOM_TYPE_HINTS[t];
+
+  const needsRoomPassword = t === 'password';
+  newRoomPasswordInput.style.display = needsRoomPassword ? 'block' : 'none';
+  newRoomPasswordInput.value = '';
+
+  const needsAppPassword = t === 'ephemeral' || t === 'e2ee';
+  gatedRoomPasswordWrap.style.display = needsAppPassword ? 'block' : 'none';
+  gatedRoomAppPasswordInput.value = '';
 }
 
 async function createAndJoin() {
   roomError.textContent = '';
-  const roomName = roomNameInput.value.trim() || 'general';
-  const roomPassword = newRoomPasswordInput.value;
+  const roomName = roomNameInput.value.trim() || undefined;
 
-  if (!roomPassword || roomPassword.length < 4) {
-    roomError.textContent = 'Room password required (min 4 characters)';
-    return;
+  let endpoint, bodyFields = {}, extraHeaders = {};
+
+  if (createRoomType === 'password') {
+    const roomPassword = newRoomPasswordInput.value;
+    if (!roomPassword || roomPassword.length < 4) {
+      roomError.textContent = 'Room password required (min 4 characters)';
+      return;
+    }
+    endpoint = '/api/rooms';
+    bodyFields = { name: roomName, roomPassword };
+  } else {
+    const appPassword = gatedRoomAppPasswordInput.value;
+    if (!appPassword) {
+      roomError.textContent = 'App password required for this room type';
+      return;
+    }
+    endpoint = createRoomType === 'ephemeral' ? '/api/rooms/ephemeral' : '/api/rooms/e2ee';
+    bodyFields = { name: roomName };
+    extraHeaders = { 'X-App-Password': appPassword };
   }
 
   createBtn.disabled = true;
   createBtn.textContent = 'Creating...';
 
   try {
-    const res = await fetch(`${API_URL}/api/rooms`, {
+    const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Session-Token': sessionToken,
+        ...extraHeaders,
       },
-      body: JSON.stringify({ name: roomName, roomPassword }),
+      body: JSON.stringify(bodyFields),
     });
     const data = await res.json();
 
-    if (res.status === 401) {
+    if (res.status === 401 && data.error === 'Not logged in') {
       roomError.textContent = 'Session expired — please log in again';
       showAuthView();
       return;
@@ -342,7 +400,26 @@ async function createAndJoin() {
       return;
     }
 
-    connectWebSocket(data.roomNumber, roomName, roomPassword);
+    // e2ee rooms return a one-time owner key that is NEVER shown again —
+    // block on the modal before connecting, so it can't be missed by a
+    // fast auto-connect flashing past it.
+    if (createRoomType === 'e2ee' && data.ownerKey) {
+      showOwnerKeyModal(data.ownerKey, () => {
+        connectWebSocket({
+          roomCode: data.roomToken,
+          roomLabel: data.room.name,
+          roomType: 'e2ee',
+        });
+      });
+      return;
+    }
+
+    connectWebSocket({
+      roomCode: data.roomToken,
+      roomLabel: data.room.name,
+      roomType: data.room.roomType || 'password',
+      roomPassword: createRoomType === 'password' ? bodyFields.roomPassword : undefined,
+    });
   } catch (err) {
     console.error('Create room error:', err);
     roomError.textContent = 'Network error';
@@ -352,38 +429,58 @@ async function createAndJoin() {
 
 function resetCreateBtn() {
   createBtn.disabled = false;
-  createBtn.textContent = 'Create & Join';
+  createBtn.textContent = 'Create Room';
+}
+
+function showOwnerKeyModal(key, onContinue) {
+  ownerKeyValue.textContent = key;
+  ownerKeyModal.style.display = 'flex';
+  const close = () => {
+    ownerKeyModal.style.display = 'none';
+    onContinue();
+  };
+  ownerKeyCloseBtn.onclick = close;
+  ownerKeyCopyBtn.onclick = () => {
+    navigator.clipboard.writeText(key).catch(() => {});
+    ownerKeyCopyBtn.textContent = 'Copied';
+    setTimeout(() => { ownerKeyCopyBtn.textContent = 'Copy'; }, 1500);
+  };
 }
 
 function joinChat() {
   roomError.textContent = '';
-  const roomNumberRaw = roomNumberInput.value.trim();
+  const roomCode = roomCodeInput.value.trim().toLowerCase();
   const roomPassword = roomPasswordInput.value;
+  const joinToken = joinTokenInput.value.trim();
 
-  if (!roomNumberRaw || !/^\d+$/.test(roomNumberRaw)) {
-    roomError.textContent = 'Enter a valid room number';
+  if (!/^[a-f0-9]{32}$/.test(roomCode)) {
+    roomError.textContent = 'Enter a valid room code (32 characters)';
     return;
   }
 
-  connectWebSocket(parseInt(roomNumberRaw), null, roomPassword);
+  connectWebSocket({ roomCode, roomPassword, joinToken });
 }
 
-function connectWebSocket(roomNumber, roomLabel, roomPassword) {
+function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
   const params = new URLSearchParams({ session: sessionToken });
   if (roomPassword) params.set('roomPassword', roomPassword);
+  if (joinToken) params.set('joinToken', joinToken);
 
-  const wsUrl = API_URL
-    .replace('http://', 'wss://')
-    .replace('https://', 'wss://') + `/api/rooms/${roomNumber}/join?${params.toString()}`;
+  // Map http(s) -> ws(s) by scheme, not by blindly forcing wss:// — a
+  // local http:// dev backend needs a plain ws:// connection, since it
+  // has no TLS to upgrade to.
+  const wsUrl = API_URL.replace(/^http/, 'ws') + `/api/rooms/${roomCode}/join?${params.toString()}`;
 
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
     roomView.style.display = 'none';
     chatView.style.display = 'flex';
-    roomNameDisplay.textContent = roomLabel || '';
-    roomNumberDisplay.textContent = `#${roomNumber}`;
-    addSystemMessage(`Connected to room #${roomNumber}`);
+    roomNameDisplay.textContent = currentRoom.name;
+    roomCodeDisplay.textContent = `#${roomCode.slice(0, 8)}`;
+    roomTypeBadge.textContent = currentRoom.roomType;
+    addSystemMessage(`Connected to ${currentRoom.name || 'room'}`);
   };
 
   ws.onmessage = (event) => {
@@ -395,9 +492,8 @@ function connectWebSocket(roomNumber, roomLabel, roomPassword) {
   };
 
   ws.onclose = (event) => {
-    // Server closes with 4001 specifically when this account was just
-    // deleted (see ChatRoom.kickAccount) — surface that plainly instead of
-    // letting it look like an ordinary disconnect or a failed join.
+    // 4001: this account was just deleted (see ChatRoom.kickAccount) —
+    // log out entirely, not just disconnect from the room.
     if (event.code === 4001) {
       ws = null;
       localStorage.removeItem('sessionToken');
@@ -409,18 +505,36 @@ function connectWebSocket(roomNumber, roomLabel, roomPassword) {
       return;
     }
 
+    // 4002: the room's password was just changed by its owner — everyone
+    // gets disconnected and needs to rejoin with the new password. 4003:
+    // an ephemeral room hit its 24h expiry.
+    if (event.code === 4002 || event.code === 4003) {
+      ws = null;
+      chatView.style.display = 'none';
+      manageRoomView.style.display = 'none';
+      showRoomView();
+      roomError.textContent = event.code === 4002
+        ? 'This room\u2019s password was changed \u2014 enter the new password to rejoin.'
+        : 'This room has expired.';
+      if (event.code === 4002 && currentRoom) {
+        roomCodeInput.value = currentRoom.roomCode;
+      }
+      return;
+    }
+
     if (intentionalClose) {
       intentionalClose = false;
       return;
     }
 
     if (chatView.style.display === 'none' || chatView.style.display === '') {
-      roomError.textContent = 'Connection failed — check room number/password';
+      roomError.textContent = 'Connection failed — check room code/password';
       resetCreateBtn();
     } else {
       addSystemMessage('Disconnected');
       chatView.style.display = 'none';
-      roomView.style.display = 'block';
+      manageRoomView.style.display = 'none';
+      roomView.style.display = 'flex';
     }
   };
 
@@ -433,6 +547,20 @@ function handleMessage(data) {
       addMessage(data.id, data.userId, data.username, data.message, false, data.timestamp, data.color, data.replyTo);
       break;
     case 'room-history':
+      // Now carries isOwner (whether THIS session is the room's owner)
+      // and roomType alongside history — see chat-room.js's fetch()
+      // handler for why this piggybacks on room-history rather than
+      // being a separate message type. isOwner drives whether the
+      // "Manage" button is shown at all; it's purely a UI convenience —
+      // every actual owner-gated action re-checks ownership server-side
+      // independently (see requireRoomOwner in index.js), so nothing
+      // security-relevant depends on the client believing this flag.
+      if (currentRoom) {
+        currentRoom.isOwner = !!data.isOwner;
+        currentRoom.roomType = data.roomType || currentRoom.roomType;
+        roomTypeBadge.textContent = currentRoom.roomType;
+        manageRoomBtn.style.display = (currentRoom.isOwner && currentRoom.roomType !== 'ephemeral') ? 'inline-block' : 'none';
+      }
       data.messages.forEach(msg => {
         const replyTo = msg.replyTo || (msg.replied_to_id ? {
           id: msg.replied_to_id,
@@ -450,13 +578,37 @@ function handleMessage(data) {
       addSystemMessage(`${data.username} left`);
       updateUserCount('-1');
       break;
+    // e2ee handshake/message types (Phase 5) are relayed by the server
+    // but this build doesn't yet implement client-side key generation or
+    // encrypt/decrypt — see the TODO block below handleMessage. Until
+    // that lands, e2ee rooms will connect and show history/join events
+    // normally, but sent "messages" won't actually be end-to-end
+    // encrypted content yet.
+    case 'e2ee-public-key':
+    case 'e2ee-existing-keys':
+    case 'e2ee-message':
+    case 'e2ee-message-sent':
+      console.log('e2ee protocol message (not yet handled client-side):', data);
+      break;
     case 'error':
-      addSystemMessage(`⚠ ${data.message}`);
+      addSystemMessage(`\u26a0 ${data.message}`);
       break;
     default:
       console.log('Unknown message:', data);
   }
 }
+
+// TODO(e2ee crypto): this build wires the e2ee room TYPE end to end
+// (creation, owner key, joining, the server-side pairwise relay) but does
+// NOT yet implement the actual client-side cryptography — WebCrypto
+// keypair generation/storage, the e2ee-public-key handshake, or
+// encrypting/decrypting e2ee-message payloads. sendMessage() below
+// currently sends plain chat-message for every room type, which the
+// backend will correctly REJECT for e2ee rooms (see chat-room.js's
+// explicit guard against plaintext chat-message in e2ee rooms) — so e2ee
+// rooms are joinable and show presence/history correctly, but sending an
+// actual message in one will currently fail with a server error until
+// this TODO is implemented.
 
 function formatTime(ts) {
   if (!ts) return '';
@@ -476,7 +628,7 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
   const color = colorFromServer || (userId ? colorForUserId(userId) : '#333');
 
   const replyHtml = replyTo
-    ? `<div class="reply-quote">↪ ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
+    ? `<div class="reply-quote">\u21aa ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
     : '';
 
   if (isSystem || sender === 'system') {
@@ -490,7 +642,6 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
     div.innerHTML = `<div class="sender" style="color:${color}">${escapeHtml(sender)} <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
   }
 
-  // Click a message to reply to it (only real chat messages, not system lines)
   if (!isSystem && sender !== 'system' && id) {
     div.addEventListener('click', () => startReply(id, sender, text));
   }
@@ -501,7 +652,7 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
 
 function startReply(id, sender, text) {
   replyingTo = { id, username: sender, snippet: text.slice(0, 120) };
-  replyPreviewText.textContent = `Replying to ${sender}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`;
+  replyPreviewText.textContent = `Replying to ${sender}: ${text.slice(0, 60)}${text.length > 60 ? '\u2026' : ''}`;
   replyPreview.style.display = 'flex';
   messageInput.focus();
 }
@@ -526,7 +677,13 @@ function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   if (text.length > 2000) {
-    addSystemMessage('⚠ Message too long');
+    addSystemMessage('\u26a0 Message too long');
+    return;
+  }
+  if (currentRoom && currentRoom.roomType === 'e2ee') {
+    // See the e2ee crypto TODO above handleMessage — sending here would
+    // just be rejected by the server as plaintext in an e2ee room.
+    addSystemMessage('\u26a0 Sending in e2ee rooms isn\u2019t implemented in this build yet');
     return;
   }
 
@@ -545,9 +702,16 @@ leaveBtn.addEventListener('click', leaveChat);
 function leaveChat() {
   if (ws) { intentionalClose = true; ws.close(); ws = null; }
   chatView.style.display = 'none';
-  roomView.style.display = 'block';
+  manageRoomView.style.display = 'none';
+  roomView.style.display = 'flex';
   messageArea.innerHTML = '';
   userCount.textContent = '0 users';
+  // Reset explicitly rather than relying on chatView (its parent) being
+  // hidden to make this moot — the next room-history message will
+  // re-evaluate this correctly regardless, but leaving stale state lying
+  // around is fragile to reason about later.
+  manageRoomBtn.style.display = 'none';
+  currentRoom = null;
   resetCreateBtn();
 }
 
@@ -562,12 +726,186 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Bootstrap: if this tab already passed the gate earlier in the session
-// (appPassword sitting in sessionStorage), skip straight to resuming/auth.
-// Otherwise show the gate screen first — nothing else is reachable.
-if (appPassword) {
-  gateView.style.display = 'none';
-  showAuthOrResume();
-} else {
-  gateView.style.display = 'block';
+// ==================== Room management (owner-only) ====================
+// currentRoom.isOwner is set from the room-history message's isOwner
+// field (see handleMessage above), which the DO now includes based on
+// the X-Is-Owner header the Worker's join route sets. That flag is
+// purely a UI convenience for showing/hiding this button — every actual
+// owner-gated action (password change, minting/revoking join tokens)
+// independently re-checks ownership server-side via requireRoomOwner, so
+// nothing security-relevant depends on the client's copy of this flag
+// being honest.
+manageRoomBtn.addEventListener('click', () => {
+  if (!currentRoom) return;
+  openManageRoom();
+});
+manageCloseBtn.addEventListener('click', () => {
+  manageRoomView.style.display = 'none';
+  chatView.style.display = 'flex';
+});
+
+function openManageRoom() {
+  chatView.style.display = 'none';
+  manageRoomView.style.display = 'flex';
+  managePasswordError.textContent = '';
+  manageTokensError.textContent = '';
+  manageNewTokenBox.style.display = 'none';
+  manageCurrentPasswordInput.value = '';
+  manageNewPasswordInput.value = '';
+  manageSecretInput.value = '';
+
+  const isE2ee = currentRoom.roomType === 'e2ee';
+  managePasswordSection.style.display = isE2ee ? 'none' : 'flex';
+  manageE2eeKeySection.style.display = isE2ee ? 'flex' : 'none';
+  manageSecretInput.placeholder = isE2ee ? 'Owner key' : 'Room password';
+
+  loadJoinTokens();
 }
+
+manageChangePasswordBtn.addEventListener('click', async () => {
+  managePasswordError.textContent = '';
+  const currentPassword = manageCurrentPasswordInput.value;
+  const newPassword = manageNewPasswordInput.value;
+  if (!currentPassword || !newPassword || newPassword.length < 4) {
+    managePasswordError.textContent = 'Both fields required; new password min 4 characters';
+    return;
+  }
+
+  manageChangePasswordBtn.disabled = true;
+  try {
+    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionToken,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      managePasswordError.textContent = data.error || 'Failed to change password';
+      return;
+    }
+    // Success kicks everyone (including this owner) via close code 4002,
+    // which ws.onclose already handles by returning to the room view with
+    // an explanatory message — nothing further to do here.
+    manageCurrentPasswordInput.value = '';
+    manageNewPasswordInput.value = '';
+  } catch (err) {
+    managePasswordError.textContent = 'Network error';
+  } finally {
+    manageChangePasswordBtn.disabled = false;
+  }
+});
+
+manageMintTokenBtn.addEventListener('click', async () => {
+  manageTokensError.textContent = '';
+  const secret = manageSecretInput.value;
+  if (!secret) {
+    manageTokensError.textContent = 'Enter the room password / owner key first';
+    return;
+  }
+
+  const isE2ee = currentRoom.roomType === 'e2ee';
+  const body = isE2ee ? { ownerKey: secret } : { currentPassword: secret };
+
+  manageMintTokenBtn.disabled = true;
+  try {
+    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionToken,
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      manageTokensError.textContent = data.error || 'Failed to mint join token';
+      return;
+    }
+    manageNewTokenValue.textContent = data.token;
+    manageNewTokenBox.style.display = 'block';
+    manageSecretInput.value = '';
+    loadJoinTokens();
+  } catch (err) {
+    manageTokensError.textContent = 'Network error';
+  } finally {
+    manageMintTokenBtn.disabled = false;
+  }
+});
+
+async function loadJoinTokens() {
+  manageTokensList.innerHTML = 'Loading\u2026';
+  try {
+    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
+      headers: { 'X-Session-Token': sessionToken },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      manageTokensList.innerHTML = '';
+      manageTokensError.textContent = data.error || 'Failed to load join tokens';
+      return;
+    }
+    renderJoinTokens(data.tokens);
+  } catch (err) {
+    manageTokensList.innerHTML = '';
+    manageTokensError.textContent = 'Network error loading join tokens';
+  }
+}
+
+function renderJoinTokens(tokens) {
+  manageTokensList.innerHTML = '';
+  if (!tokens || tokens.length === 0) {
+    manageTokensList.innerHTML = '<p class="hint">No join tokens minted yet.</p>';
+    return;
+  }
+
+  tokens.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'token-row' + (t.revokedAt ? ' revoked' : '');
+
+    const info = document.createElement('div');
+    const created = new Date(t.createdAt * 1000).toLocaleDateString();
+    const usesText = t.uses.length === 0
+      ? 'never used'
+      : `used by ${t.uses.length} join${t.uses.length === 1 ? '' : 's'}`;
+    info.innerHTML = `Token ${escapeHtml(t.tokenId.slice(0, 8))}\u2026 \u00b7 created ${created}` +
+      `<div class="token-uses">${escapeHtml(usesText)}${t.revokedAt ? ' \u00b7 revoked' : ''}</div>`;
+
+    row.appendChild(info);
+
+    if (!t.revokedAt) {
+      const revokeBtn = document.createElement('button');
+      revokeBtn.type = 'button';
+      revokeBtn.textContent = 'Revoke';
+      revokeBtn.addEventListener('click', () => revokeJoinToken(t.tokenId));
+      row.appendChild(revokeBtn);
+    }
+
+    manageTokensList.appendChild(row);
+  });
+}
+
+async function revokeJoinToken(tokenId) {
+  manageTokensError.textContent = '';
+  try {
+    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens/${tokenId}`, {
+      method: 'DELETE',
+      headers: { 'X-Session-Token': sessionToken },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      manageTokensError.textContent = data.error || 'Failed to revoke token';
+      return;
+    }
+    loadJoinTokens();
+  } catch (err) {
+    manageTokensError.textContent = 'Network error';
+  }
+}
+
+// ==================== Bootstrap ====================
+// No site-wide gate anymore — go straight to resuming a session or
+// showing the login/register screen.
+tryResumeSession();
