@@ -5,20 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paranoid Chat</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 </head>
 <body>
 
- 
-  <div id="gate-view">
+  <div id="auth-view">
     <h1>Paranoid Chat</h1>
-    <input id="gate-password-input" type="password" placeholder="App password">
-    <button id="gate-submit-btn">Continue</button>
-    <div id="gate-error"></div>
-  </div>
-
-  
-  <div id="auth-view" style="display:none">
-    <h1>Chat</h1>
     <div id="auth-mode-toggle">
       <button id="auth-login-btn" class="mode-active" type="button">Log In</button>
       <button id="auth-register-btn" type="button">Sign Up</button>
@@ -26,11 +18,15 @@
     <input id="auth-username-input" type="text" placeholder="Username" autocomplete="username">
     <input id="auth-password-input" type="password" placeholder="Password" autocomplete="current-password">
     <p id="auth-hint" class="hint"></p>
+    <div id="auth-hcaptcha" class="h-captcha"></div>
+    <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--danger)">
+      hCaptcha site key not configured \u2014 set HCAPTCHA_SITE_KEY in script.js.
+    </p>
     <button id="auth-submit-btn">Log In</button>
     <div id="auth-error"></div>
   </div>
 
-  
+
   <div id="room-view" style="display:none">
     <div id="account-bar">
       Logged in as <span id="account-display"></span>
@@ -39,27 +35,67 @@
     </div>
 
     <div id="mode-toggle">
-      <button id="mode-join-btn" class="mode-active" type="button">Join Room</button>
-      <button id="mode-create-btn" type="button">Create Room</button>
+      <button id="mode-join-btn" class="mode-active" type="button">Join</button>
+      <button id="mode-create-btn" type="button">Create</button>
     </div>
 
-    <input id="room-number-input" type="text" inputmode="numeric" placeholder="Room number (e.g. 1254)">
-    <input id="room-password-input" type="password" placeholder="Room password">
+    <!-- Join panel: works for all room types. A join token substitutes for
+         the room password entirely on password rooms; on e2ee rooms it adds
+         nothing beyond what already knowing the room code grants, per the
+         Phase 7 design — the fields just don't need to change based on type. -->
+    <div id="join-panel">
+      <input id="room-code-input" type="text" placeholder="Room code" autocomplete="off" spellcheck="false">
+      <input id="room-password-input" type="password" placeholder="Room password (if required)">
+      <input id="join-token-input" type="text" placeholder="Join token (optional, if invited)" autocomplete="off" spellcheck="false">
+      <button id="join-btn">Join Room</button>
+    </div>
 
-    <div id="create-only" style="display:none">
+    <!-- Create panel: room-type selector first, since it changes which
+         fields are relevant/required below. -->
+    <div id="create-panel" style="display:none">
+      <div id="room-type-toggle">
+        <button id="type-password-btn" class="mode-active" type="button">Password Room</button>
+        <button id="type-ephemeral-btn" type="button">Ephemeral (24h)</button>
+        <button id="type-e2ee-btn" type="button">E2EE</button>
+      </div>
+      <p id="room-type-hint" class="hint"></p>
+
       <input id="room-name-input" type="text" placeholder="Room name (label, not unique)">
       <input id="new-room-password-input" type="password" placeholder="Set a room password (required)">
+
+      <!-- Only shown for ephemeral/e2ee — the app password is re-verified
+           here, at the moment of creating one of these two room types
+           specifically, not at login/register (see backend Phase 3). -->
+      <div id="gated-room-password-wrap" style="display:none">
+        <input id="gated-room-app-password-input" type="password" placeholder="App password (required for this room type)">
+      </div>
+
+      <button id="create-btn">Create Room</button>
     </div>
 
-    <button id="join-btn">Join</button>
-    <button id="create-btn" style="display:none">Create &amp; Join</button>
     <div id="room-error"></div>
+  </div>
+
+  <!-- Shown once, immediately after creating an e2ee room: the owner key.
+       This is the ONLY time it's ever shown — the server never stores or
+       returns it in plaintext again. Closing this without saving it means
+       it's gone for good, same as losing a room password. -->
+  <div id="owner-key-modal" style="display:none">
+    <div id="owner-key-box">
+      <h2>Save this owner key</h2>
+      <p class="hint">This e2ee room has no room password. This key is the only way to mint join-invite tokens for it later. It is shown <strong>once</strong> and cannot be recovered if lost.</p>
+      <div id="owner-key-value"></div>
+      <button id="owner-key-copy-btn" type="button">Copy</button>
+      <button id="owner-key-close-btn" type="button">I've saved it — continue</button>
+    </div>
   </div>
 
   <div id="chat-view" style="display:none">
     <header>
-      <span>#<span id="room-name-display"></span> <span id="room-number-display"></span></span>
+      <span>#<span id="room-name-display"></span> <span id="room-code-display"></span></span>
+      <span id="room-type-badge"></span>
       <span id="user-count">0 users</span>
+      <button id="manage-room-btn" style="display:none">Manage</button>
       <button id="leave-btn">Leave</button>
     </header>
 
@@ -73,6 +109,48 @@
     <div id="input-row">
       <input id="message-input" type="text" placeholder="Message" autocomplete="off" maxlength="2000">
       <button id="send-btn">Send</button>
+    </div>
+  </div>
+
+  <!-- Owner-only room management panel: change room password, mint/revoke
+       join tokens, see who joined via which token. Only ever shown when
+       the current session is the room's owner (server-confirmed via
+       X-Is-Owner on join — see script.js) and only for password/e2ee rooms
+       (ephemeral rooms have no owner-managed tokens, per backend Phase 7). -->
+  <div id="manage-room-view" style="display:none">
+    <header>
+      <span>Manage room</span>
+      <button id="manage-close-btn">Close</button>
+    </header>
+
+    <div id="manage-body">
+      <section id="manage-password-section">
+        <h3>Change room password</h3>
+        <input id="manage-current-password-input" type="password" placeholder="Current room password">
+        <input id="manage-new-password-input" type="password" placeholder="New room password">
+        <button id="manage-change-password-btn">Change password</button>
+        <p class="hint">Everyone currently connected will be disconnected and asked to rejoin with the new password.</p>
+        <div id="manage-password-error"></div>
+      </section>
+
+      <section id="manage-e2ee-key-section" style="display:none">
+        <h3>Owner key</h3>
+        <p class="hint">Required to mint join tokens for this room. It was only ever shown once, at creation — if you didn't save it, minting tokens is no longer possible for this room.</p>
+      </section>
+
+      <section id="manage-tokens-section">
+        <h3>Join tokens</h3>
+        <div id="manage-mint-row">
+          <input id="manage-secret-input" type="password" placeholder="Room password / owner key">
+          <button id="manage-mint-token-btn">Mint new join token</button>
+        </div>
+        <div id="manage-new-token-box" style="display:none">
+          <p class="hint">Save this now — it won't be shown again.</p>
+          <div id="manage-new-token-value"></div>
+        </div>
+        <div id="manage-tokens-list"></div>
+        <div id="manage-tokens-error"></div>
+      </section>
     </div>
   </div>
 
