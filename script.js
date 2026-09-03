@@ -174,13 +174,15 @@ authSubmitBtn.addEventListener('click', async () => {
   const hcaptchaToken = getHcaptchaToken();
 
   // ===== DEBUG LOGGING START =====
-  console.log('=== Auth Submit Debug ===');
-  console.log('Username:', username);
-  console.log('Password:', password ? 'provided (' + password.length + ' chars)' : 'MISSING');
-  console.log('hCaptcha token:', hcaptchaToken ? hcaptchaToken.substring(0, 50) + '...' : 'EMPTY');
-  console.log('hCaptcha token length:', hcaptchaToken.length);
-  console.log('Auth mode:', authMode);
-  console.log('=== End Auth Submit Debug ===');
+  // ===== DEBUG LOGGING START =====
+console.log('=== Auth Submit Debug ===');
+console.log('Username:', username);
+console.log('Password:', password ? 'provided (' + password.length + ' chars)' : 'MISSING');
+console.log('FULL hCaptcha token:', hcaptchaToken); // Shows entire token
+console.log('hCaptcha token length:', hcaptchaToken.length);
+console.log('Auth mode:', authMode);
+console.log('=== End Auth Submit Debug ===');
+// ===== DEBUG LOGGING END =====
   // ===== DEBUG LOGGING END =====
 
   if (!username || !password) {
