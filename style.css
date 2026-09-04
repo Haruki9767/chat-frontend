@@ -1,3 +1,5 @@
+/* Simple, flat theme. No gradients anywhere by design. */
+
 :root {
   --bg: #fafafa;
   --surface: #ffffff;
@@ -379,7 +381,8 @@ header > span:first-child {
 }
 #manage-mint-row input { flex: 1; }
 
-#manage-new-token-value {
+#manage-new-token-value,
+#manage-room-code-value {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
   background: #f5f5f5;
@@ -389,6 +392,9 @@ header > span:first-child {
   word-break: break-all;
   user-select: all;
 }
+
+#manage-room-code-section { margin-bottom: 0; }
+#manage-room-code-copy-btn { align-self: flex-start; }
 
 .token-row {
   display: flex;
