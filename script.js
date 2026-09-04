@@ -4,9 +4,26 @@ const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 // deploying. This is the PUBLIC key — safe to embed client-side (unlike
 // the secret key, which only ever lives on the separate hCaptcha
 // verification Worker, never here). Without a real value, the widget
-// will not render and login/register will fail at verifyHcaptcha() on
-// the backend, since it always fails closed on a missing/invalid token.
+// will not render and login/register will be blocked client-side (see
+// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
+
+// The separate, standalone Cloudflare Worker dedicated to hCaptcha
+// verification (owns the secret key and the actual siteverify call —
+// never this frontend, never the chat backend). Called DIRECTLY from
+// here, in the browser, rather than by the chat backend server-to-server
+// — that Worker's own CORS layer (HCAPTCHA_ALLOWED_ORIGINS) exists
+// specifically to support being called this way. This backend/frontend
+// split was chosen after repeated, unresolved 404s calling this same
+// endpoint Worker-to-Worker from inside the chat backend, which did not
+// reproduce via curl or from a browser — see index.js's comments above
+// where verifyHcaptcha used to live for the full account of that.
+//
+// Security note: since verification now happens entirely client-side,
+// hCaptcha is an abuse deterrent, not a hard guarantee — the chat
+// backend no longer independently re-checks it. This was a deliberate,
+// informed tradeoff.
+const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
 let intentionalClose = false; // set right before we call ws.close() ourselves, so onclose can tell a deliberate leave apart from a real disconnect/failure
@@ -128,6 +145,33 @@ function resetHcaptcha() {
   try { hcaptcha.reset(); } catch {}
 }
 
+// Calls the hCaptcha verification Worker DIRECTLY from the browser (a
+// real cross-origin request the Worker's own CORS layer is built to
+// accept — no manual Origin header needed here, the browser sets one
+// automatically and truthfully, unlike the abandoned server-to-server
+// approach). Returns true only on an explicit { ok: true } — every other
+// outcome (network failure, non-200, malformed body, explicit
+// { ok: false }) is treated as "not verified." This is now the ONLY
+// verification that happens anywhere in this app — see the note by
+// HCAPTCHA_VERIFY_URL above for why the chat backend no longer
+// independently re-checks it.
+async function verifyHcaptchaClientSide(token) {
+  if (!token) return false;
+  try {
+    const res = await fetch(HCAPTCHA_VERIFY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data && data.ok === true;
+  } catch (err) {
+    console.error('hCaptcha verification request failed:', err);
+    return false;
+  }
+}
+
 // The hCaptcha script auto-renders any element with class="h-captcha" and
 // a data-sitekey attribute the moment it loads, so data-sitekey has to be
 // set on the container BEFORE that script runs — done here, at the top
@@ -173,18 +217,6 @@ authSubmitBtn.addEventListener('click', async () => {
   const password = authPasswordInput.value;
   const hcaptchaToken = getHcaptchaToken();
 
-  // ===== DEBUG LOGGING START =====
-  // ===== DEBUG LOGGING START =====
-console.log('=== Auth Submit Debug ===');
-console.log('Username:', username);
-console.log('Password:', password ? 'provided (' + password.length + ' chars)' : 'MISSING');
-console.log('FULL hCaptcha token:', hcaptchaToken); // Shows entire token
-console.log('hCaptcha token length:', hcaptchaToken.length);
-console.log('Auth mode:', authMode);
-console.log('=== End Auth Submit Debug ===');
-// ===== DEBUG LOGGING END =====
-  // ===== DEBUG LOGGING END =====
-
   if (!username || !password) {
     authError.textContent = 'Username and password required';
     return;
@@ -197,21 +229,28 @@ console.log('=== End Auth Submit Debug ===');
   }
 
   authSubmitBtn.disabled = true;
+
+  // Verified directly against the hCaptcha verification Worker, in the
+  // browser, BEFORE ever calling the chat backend — see
+  // verifyHcaptchaClientSide's notes for why this replaced a
+  // server-to-server check.
+  const verified = await verifyHcaptchaClientSide(hcaptchaToken);
+  if (!verified) {
+    authError.textContent = 'hCaptcha verification failed \u2014 please try again';
+    authSubmitBtn.disabled = false;
+    resetHcaptcha();
+    return;
+  }
+
   const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
 
   try {
-    console.log('Sending request to:', `${API_URL}${endpoint}`); // DEBUG
-    console.log('Request body:', JSON.stringify({ username, password: '***', hcaptchaToken: hcaptchaToken.substring(0, 50) + '...' })); // DEBUG
-
     const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, hcaptchaToken }),
+      body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
-
-    console.log('Response status:', res.status); // DEBUG
-    console.log('Response data:', data); // DEBUG
 
     if (res.status === 429) {
       authError.textContent = data.error || 'Too many attempts — please wait.';
@@ -565,19 +604,31 @@ function handleMessage(data) {
       addMessage(data.id, data.userId, data.username, data.message, false, data.timestamp, data.color, data.replyTo);
       break;
     case 'room-history':
-      // Now carries isOwner (whether THIS session is the room's owner)
-      // and roomType alongside history — see chat-room.js's fetch()
-      // handler for why this piggybacks on room-history rather than
-      // being a separate message type. isOwner drives whether the
-      // "Manage" button is shown at all; it's purely a UI convenience —
-      // every actual owner-gated action re-checks ownership server-side
-      // independently (see requireRoomOwner in index.js), so nothing
-      // security-relevant depends on the client believing this flag.
+      // Now carries isOwner (whether THIS session is the room's owner),
+      // roomType, and participantCount alongside history — see
+      // chat-room.js's fetch() handler for why this piggybacks on
+      // room-history rather than being a separate message type. isOwner
+      // drives whether the "Manage" button is shown at all; it's purely
+      // a UI convenience — every actual owner-gated action re-checks
+      // ownership server-side independently (see requireRoomOwner in
+      // index.js), so nothing security-relevant depends on the client
+      // believing this flag.
       if (currentRoom) {
         currentRoom.isOwner = !!data.isOwner;
         currentRoom.roomType = data.roomType || currentRoom.roomType;
         roomTypeBadge.textContent = currentRoom.roomType;
         manageRoomBtn.style.display = (currentRoom.isOwner && currentRoom.roomType !== 'ephemeral') ? 'inline-block' : 'none';
+      }
+      // participantCount is authoritative (computed server-side from the
+      // Durable Object's actual connected-socket count, AFTER this
+      // client's own socket was accepted) — set it directly rather than
+      // ever doing local +1/-1 arithmetic from a hardcoded starting
+      // point. That old approach undercounted every room this client
+      // didn't personally watch every join/leave event for, including
+      // itself: a hardcoded "0 users" baseline never learned about its
+      // OWN connection, only other people's subsequent events.
+      if (typeof data.participantCount === 'number') {
+        userCount.textContent = `${data.participantCount} users`;
       }
       data.messages.forEach(msg => {
         const replyTo = msg.replyTo || (msg.replied_to_id ? {
@@ -590,11 +641,18 @@ function handleMessage(data) {
       break;
     case 'user-joined':
       addSystemMessage(`${data.username} joined`);
-      updateUserCount('+1');
+      // Same authoritative-count approach as room-history above — trust
+      // the server's count rather than incrementing a local one, which
+      // stays correct even if this client ever missed a prior event.
+      if (typeof data.participantCount === 'number') {
+        userCount.textContent = `${data.participantCount} users`;
+      }
       break;
     case 'user-left':
       addSystemMessage(`${data.username} left`);
-      updateUserCount('-1');
+      if (typeof data.participantCount === 'number') {
+        userCount.textContent = `${data.participantCount} users`;
+      }
       break;
     // e2ee handshake/message types (Phase 5) are relayed by the server
     // but this build doesn't yet implement client-side key generation or
@@ -733,10 +791,10 @@ function leaveChat() {
   resetCreateBtn();
 }
 
-function updateUserCount(delta) {
-  const current = parseInt(userCount.textContent) || 0;
-  userCount.textContent = `${delta === '+1' ? current + 1 : Math.max(0, current - 1)} users`;
-}
+// updateUserCount was removed — participant counts now come directly
+// from the server's authoritative participantCount field on room-history/
+// user-joined/user-left (see handleMessage above), never computed
+// client-side.
 
 function escapeHtml(text) {
   const div = document.createElement('div');
