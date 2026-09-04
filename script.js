@@ -1,28 +1,8 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
-// TODO(frontend config): set this to your actual hCaptcha site key before
-// deploying. This is the PUBLIC key — safe to embed client-side (unlike
-// the secret key, which only ever lives on the separate hCaptcha
-// verification Worker, never here). Without a real value, the widget
-// will not render and login/register will be blocked client-side (see
-// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-// The separate, standalone Cloudflare Worker dedicated to hCaptcha
-// verification (owns the secret key and the actual siteverify call —
-// never this frontend, never the chat backend). Called DIRECTLY from
-// here, in the browser, rather than by the chat backend server-to-server
-// — that Worker's own CORS layer (HCAPTCHA_ALLOWED_ORIGINS) exists
-// specifically to support being called this way. This backend/frontend
-// split was chosen after repeated, unresolved 404s calling this same
-// endpoint Worker-to-Worker from inside the chat backend, which did not
-// reproduce via curl or from a browser — see index.js's comments above
-// where verifyHcaptcha used to live for the full account of that.
-//
-// Security note: since verification now happens entirely client-side,
-// hCaptcha is an abuse deterrent, not a hard guarantee — the chat
-// backend no longer independently re-checks it. This was a deliberate,
-// informed tradeoff.
+
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
