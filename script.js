@@ -541,8 +541,8 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
     currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
     roomView.style.display = 'none';
     chatView.style.display = 'flex';
-    roomNameDisplay.textContent = currentRoom.name;
-    roomCodeDisplay.textContent = `#${roomCode.slice(0, 8)}`;
+    roomNameDisplay.textContent = `#${currentRoom.name}`;
+    roomCodeDisplay.textContent = 'Copy code';
     roomTypeBadge.textContent = currentRoom.roomType;
     addSystemMessage(`Connected to ${currentRoom.name || 'room'}`);
   };
@@ -806,8 +806,10 @@ leaveBtn.addEventListener('click', leaveChat);
 // Available to EVERYONE in the room, not just the owner — this is the
 // only way a non-owner (or anyone in an ephemeral room, which has no
 // Manage panel at all — see manageRoomBtn's visibility logic above) can
-// ever see/copy the room's full code, since the header otherwise only
-// shows a truncated 8-character preview.
+// ever see/copy the room's full code. Labeled "Copy code" explicitly
+// (rather than showing a truncated hex string that looked like plain
+// text and wasn't discoverable as tappable — the original version of
+// this element failed exactly that way in practice).
 roomCodeDisplay.addEventListener('click', () => {
   if (!currentRoom) return;
   navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
