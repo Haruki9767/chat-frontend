@@ -1,6 +1,11 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
-// TODO
+// TODO(frontend config): set this to your actual hCaptcha site key before
+// deploying. This is the PUBLIC key — safe to embed client-side (unlike
+// the secret key, which only ever lives on the separate hCaptcha
+// verification Worker, never here). Without a real value, the widget
+// will not render and login/register will be blocked client-side (see
+// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
 // The separate, standalone Cloudflare Worker dedicated to hCaptcha
@@ -377,7 +382,7 @@ typeEphemeralBtn.addEventListener('click', () => setCreateRoomType('ephemeral'))
 typeE2eeBtn.addEventListener('click', () => setCreateRoomType('e2ee'));
 
 const ROOM_TYPE_HINTS = {
-  password: 'A standard room, protected by the password you set below.',
+  password: 'A standard room, protected by the password you set below. Requires the app password to create.',
   ephemeral: 'Deletes itself and everyone in it after 24 hours. Max 10 people. No room password. Requires the app password to create.',
   e2ee: 'End-to-end encrypted — messages are never stored on the server, not even briefly. No room password; instead you\u2019ll get a one-time owner key after creating it. Requires the app password to create.',
 };
@@ -393,8 +398,9 @@ function setCreateRoomType(t) {
   newRoomPasswordInput.style.display = needsRoomPassword ? 'block' : 'none';
   newRoomPasswordInput.value = '';
 
-  const needsAppPassword = t === 'ephemeral' || t === 'e2ee';
-  gatedRoomPasswordWrap.style.display = needsAppPassword ? 'block' : 'none';
+  // The app password is now required to create ANY room type, not just
+  // ephemeral/e2ee — always shown.
+  gatedRoomPasswordWrap.style.display = 'block';
   gatedRoomAppPasswordInput.value = '';
 }
 
@@ -402,7 +408,17 @@ async function createAndJoin() {
   roomError.textContent = '';
   const roomName = roomNameInput.value.trim() || undefined;
 
-  let endpoint, bodyFields = {}, extraHeaders = {};
+  // App password is now required for every room type — checked once,
+  // outside the per-type branch below (previously only ephemeral/e2ee
+  // required it; password rooms now do too).
+  const appPassword = gatedRoomAppPasswordInput.value;
+  if (!appPassword) {
+    roomError.textContent = 'App password required';
+    return;
+  }
+  const extraHeaders = { 'X-App-Password': appPassword };
+
+  let endpoint, bodyFields = {};
 
   if (createRoomType === 'password') {
     const roomPassword = newRoomPasswordInput.value;
@@ -413,14 +429,8 @@ async function createAndJoin() {
     endpoint = '/api/rooms';
     bodyFields = { name: roomName, roomPassword };
   } else {
-    const appPassword = gatedRoomAppPasswordInput.value;
-    if (!appPassword) {
-      roomError.textContent = 'App password required for this room type';
-      return;
-    }
     endpoint = createRoomType === 'ephemeral' ? '/api/rooms/ephemeral' : '/api/rooms/e2ee';
     bodyFields = { name: roomName };
-    extraHeaders = { 'X-App-Password': appPassword };
   }
 
   createBtn.disabled = true;
@@ -744,9 +754,25 @@ function addSystemMessage(text) {
 }
 
 sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+messageInput.addEventListener('keydown', (e) => {
+  // Only trigger on the actual Enter press, not the browser's repeat-fire
+  // while the key is held, and ignore IME composition Enters (e.g.
+  // confirming a suggestion on some mobile keyboards) — e.isComposing is
+  // the standard way to detect that. Without this, some mobile virtual
+  // keyboards were firing this handler in a way that, combined with the
+  // Send button's own click handler, sent the same message twice.
+  if (e.key === 'Enter' && !e.repeat && !e.isComposing) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+let sendInFlight = false; // guards against sending the same message twice from two rapid triggers on the same physical action — e.g. a double-tap on the Send button (confirmed cause), or Enter's keydown plus a near-simultaneous click landing together
+const SEND_DEBOUNCE_MS = 500; // long enough to absorb a real double-tap (typically 100-300ms apart), short enough that it never blocks two genuinely separate messages sent close together
 
 function sendMessage() {
+  if (sendInFlight) return;
+
   const text = messageInput.value.trim();
   if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   if (text.length > 2000) {
@@ -760,6 +786,10 @@ function sendMessage() {
     return;
   }
 
+  sendInFlight = true;
+  sendBtn.disabled = true;
+  setTimeout(() => { sendInFlight = false; sendBtn.disabled = false; }, SEND_DEBOUNCE_MS);
+
   const payload = { type: 'chat-message', message: text };
   if (replyingTo) {
     payload.replyTo = replyingTo.id;
@@ -772,6 +802,20 @@ function sendMessage() {
 }
 
 leaveBtn.addEventListener('click', leaveChat);
+
+// Available to EVERYONE in the room, not just the owner — this is the
+// only way a non-owner (or anyone in an ephemeral room, which has no
+// Manage panel at all — see manageRoomBtn's visibility logic above) can
+// ever see/copy the room's full code, since the header otherwise only
+// shows a truncated 8-character preview.
+roomCodeDisplay.addEventListener('click', () => {
+  if (!currentRoom) return;
+  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
+  const original = roomCodeDisplay.textContent;
+  roomCodeDisplay.textContent = 'Copied!';
+  setTimeout(() => { roomCodeDisplay.textContent = original; }, 1200);
+});
+
 function leaveChat() {
   if (ws) { intentionalClose = true; ws.close(); ws = null; }
   chatView.style.display = 'none';
