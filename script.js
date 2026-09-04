@@ -1,11 +1,6 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
-// TODO(frontend config): set this to your actual hCaptcha site key before
-// deploying. This is the PUBLIC key — safe to embed client-side (unlike
-// the secret key, which only ever lives on the separate hCaptcha
-// verification Worker, never here). Without a real value, the widget
-// will not render and login/register will be blocked client-side (see
-// the auth submit handler below), since there'd be no token to verify.
+// TODO
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
 // The separate, standalone Cloudflare Worker dedicated to hCaptcha
@@ -96,6 +91,8 @@ const replyCancelBtn = document.getElementById('reply-cancel-btn');
 
 // ---- Manage room panel ----
 const manageCloseBtn = document.getElementById('manage-close-btn');
+const manageRoomCodeValue = document.getElementById('manage-room-code-value');
+const manageRoomCodeCopyBtn = document.getElementById('manage-room-code-copy-btn');
 const managePasswordSection = document.getElementById('manage-password-section');
 const manageCurrentPasswordInput = document.getElementById('manage-current-password-input');
 const manageNewPasswordInput = document.getElementById('manage-new-password-input');
@@ -830,6 +827,8 @@ function openManageRoom() {
   manageNewPasswordInput.value = '';
   manageSecretInput.value = '';
 
+  manageRoomCodeValue.textContent = currentRoom.roomCode;
+
   const isE2ee = currentRoom.roomType === 'e2ee';
   managePasswordSection.style.display = isE2ee ? 'none' : 'flex';
   manageE2eeKeySection.style.display = isE2ee ? 'flex' : 'none';
@@ -837,6 +836,13 @@ function openManageRoom() {
 
   loadJoinTokens();
 }
+
+manageRoomCodeCopyBtn.addEventListener('click', () => {
+  if (!currentRoom) return;
+  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
+  manageRoomCodeCopyBtn.textContent = 'Copied';
+  setTimeout(() => { manageRoomCodeCopyBtn.textContent = 'Copy'; }, 1500);
+});
 
 manageChangePasswordBtn.addEventListener('click', async () => {
   managePasswordError.textContent = '';
