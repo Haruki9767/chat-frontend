@@ -1,5 +1,3 @@
-/* Simple, polished flat theme — intentionally no gradients. */
-
 :root {
   color-scheme: light dark;
   /* Light tokens */
@@ -999,42 +997,44 @@ header > span:first-child {
   }
 }
 
-/* Password wrapper */
+/* Password wrapper and toggle */
 .password-wrapper {
   position: relative;
   display: flex;
   align-items: center;
   width: 100%;
 }
-.password-wrapper input {
+
+.password-wrapper input[type="password"],
+.password-wrapper input[type="text"] {
   flex: 1;
-  padding-right: 2.5rem;
+  padding-right: 2.8rem;
 }
+
 .password-toggle {
   position: absolute;
-  right: 0.5rem;
+  right: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
-  min-height: 2rem;
+  min-height: 2.2rem;
   padding: 0.2rem 0.4rem;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
 .password-toggle:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
-  .loading-spinner svg {
-    animation-duration: 0s !important;
-  }
+
+.password-toggle svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
