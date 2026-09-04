@@ -2,17 +2,13 @@ const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
-let intentionalClose = false; // set right before we call ws.close() ourselves, so onclose can tell a deliberate leave apart from a real disconnect/failure
-let account = null; // { accountId, username, displayTag, color }
+let intentionalClose = false;
+let account = null;
 let sessionToken = localStorage.getItem('sessionToken') || null;
 
-// Current room's info, populated once join succeeds — needed by the
-// "Manage" panel (owner-only actions) and to label the chat header
-// correctly per room type.
 let currentRoom = null; // { roomCode, name, roomType, isOwner }
 
 const authView = document.getElementById('auth-view');
@@ -21,7 +17,7 @@ const chatView = document.getElementById('chat-view');
 const manageRoomView = document.getElementById('manage-room-view');
 const ownerKeyModal = document.getElementById('owner-key-modal');
 
-// ---- Auth ----
+// auth
 const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
@@ -55,7 +51,7 @@ const gatedRoomAppPasswordInput = document.getElementById('gated-room-app-passwo
 const createBtn = document.getElementById('create-btn');
 const roomError = document.getElementById('room-error');
 
-// ---- Owner key modal (shown once, at e2ee room creation) ----
+// ---- Owner key modal ----
 const ownerKeyValue = document.getElementById('owner-key-value');
 const ownerKeyCopyBtn = document.getElementById('owner-key-copy-btn');
 const ownerKeyCloseBtn = document.getElementById('owner-key-close-btn');
@@ -91,11 +87,9 @@ const manageNewTokenValue = document.getElementById('manage-new-token-value');
 const manageTokensList = document.getElementById('manage-tokens-list');
 const manageTokensError = document.getElementById('manage-tokens-error');
 
-let replyingTo = null; // { id, username, snippet }
+let replyingTo = null;
 
-// ---- Deterministic color, mirrors the server's algorithm, used so
-// history-replayed messages (which don't carry a color from D1) still
-// render in the correct consistent color per user. ----
+// ---- Deterministic color ----
 const USER_COLORS = [
   '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
   '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
@@ -110,10 +104,6 @@ function colorForUserId(userId) {
   return USER_COLORS[hash % USER_COLORS.length];
 }
 
-// Reads the hCaptcha widget's current response token. Returns '' if the
-// widget hasn't rendered (e.g. HCAPTCHA_SITE_KEY is blank) or hasn't been
-// solved yet — the backend will correctly reject an empty token rather
-// than this needing its own client-side validation.
 function getHcaptchaToken() {
   if (typeof hcaptcha === 'undefined') return '';
   try {
@@ -127,16 +117,6 @@ function resetHcaptcha() {
   try { hcaptcha.reset(); } catch {}
 }
 
-// Calls the hCaptcha verification Worker DIRECTLY from the browser (a
-// real cross-origin request the Worker's own CORS layer is built to
-// accept — no manual Origin header needed here, the browser sets one
-// automatically and truthfully, unlike the abandoned server-to-server
-// approach). Returns true only on an explicit { ok: true } — every other
-// outcome (network failure, non-200, malformed body, explicit
-// { ok: false }) is treated as "not verified." This is now the ONLY
-// verification that happens anywhere in this app — see the note by
-// HCAPTCHA_VERIFY_URL above for why the chat backend no longer
-// independently re-checks it.
 async function verifyHcaptchaClientSide(token) {
   if (!token) return false;
   try {
@@ -154,13 +134,6 @@ async function verifyHcaptchaClientSide(token) {
   }
 }
 
-// The hCaptcha script auto-renders any element with class="h-captcha" and
-// a data-sitekey attribute the moment it loads, so data-sitekey has to be
-// set on the container BEFORE that script runs — done here, at the top
-// of this file, rather than waiting for a DOMContentLoaded-style event,
-// since api.js is loaded with defer (runs after the DOM is parsed but the
-// exact ordering relative to this script depends on load timing either
-// way — setting the attribute as early as possible is the safe choice).
 (function initHcaptchaWidget() {
   const el = document.getElementById('auth-hcaptcha');
   const warning = document.getElementById('auth-hcaptcha-missing-warning');
@@ -206,19 +179,15 @@ authSubmitBtn.addEventListener('click', async () => {
   if (!hcaptchaToken) {
     authError.textContent = HCAPTCHA_SITE_KEY
       ? 'Please complete the captcha'
-      : 'hCaptcha is not configured (see HCAPTCHA_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
+      : 'hCaptcha is not configured (see HCAPTCHA_SITE_KEY in script.js) — login/register cannot succeed until it is';
     return;
   }
 
   authSubmitBtn.disabled = true;
 
-  // Verified directly against the hCaptcha verification Worker, in the
-  // browser, BEFORE ever calling the chat backend — see
-  // verifyHcaptchaClientSide's notes for why this replaced a
-  // server-to-server check.
   const verified = await verifyHcaptchaClientSide(hcaptchaToken);
   if (!verified) {
-    authError.textContent = 'hCaptcha verification failed \u2014 please try again';
+    authError.textContent = 'hCaptcha verification failed — please try again';
     authSubmitBtn.disabled = false;
     resetHcaptcha();
     return;
@@ -364,7 +333,7 @@ typeE2eeBtn.addEventListener('click', () => setCreateRoomType('e2ee'));
 const ROOM_TYPE_HINTS = {
   password: 'A standard room, protected by the password you set below. Requires the app password to create.',
   ephemeral: 'Deletes itself and everyone in it after 24 hours. Max 10 people. No room password. Requires the app password to create.',
-  e2ee: 'End-to-end encrypted — messages are never stored on the server, not even briefly. No room password; instead you\u2019ll get a one-time owner key after creating it. Requires the app password to create.',
+  e2ee: 'End-to-end encrypted — messages are never stored on the server, not even briefly. No room password; instead you\'ll get a one-time owner key after creating it. Requires the app password to create.',
 };
 
 function setCreateRoomType(t) {
@@ -378,8 +347,6 @@ function setCreateRoomType(t) {
   newRoomPasswordInput.style.display = needsRoomPassword ? 'block' : 'none';
   newRoomPasswordInput.value = '';
 
-  // The app password is now required to create ANY room type, not just
-  // ephemeral/e2ee — always shown.
   gatedRoomPasswordWrap.style.display = 'block';
   gatedRoomAppPasswordInput.value = '';
 }
@@ -388,9 +355,6 @@ async function createAndJoin() {
   roomError.textContent = '';
   const roomName = roomNameInput.value.trim() || undefined;
 
-  // App password is now required for every room type — checked once,
-  // outside the per-type branch below (previously only ephemeral/e2ee
-  // required it; password rooms now do too).
   const appPassword = gatedRoomAppPasswordInput.value;
   if (!appPassword) {
     roomError.textContent = 'App password required';
@@ -444,9 +408,6 @@ async function createAndJoin() {
       return;
     }
 
-    // e2ee rooms return a one-time owner key that is NEVER shown again —
-    // block on the modal before connecting, so it can't be missed by a
-    // fast auto-connect flashing past it.
     if (createRoomType === 'e2ee' && data.ownerKey) {
       showOwnerKeyModal(data.ownerKey, () => {
         connectWebSocket({
@@ -505,515 +466,704 @@ function joinChat() {
   connectWebSocket({ roomCode, roomPassword, joinToken });
 }
 
-function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
-  const params = new URLSearchParams({ session: sessionToken });
-  if (roomPassword) params.set('roomPassword', roomPassword);
-  if (joinToken) params.set('joinToken', joinToken);
+// ============================================================================
+// END OF ORIGINAL SCRIPT.JS — ENHANCEMENTS CONTINUE BELOW
+// ============================================================================
 
-  // Map http(s) -> ws(s) by scheme, not by blindly forcing wss:// — a
-  // local http:// dev backend needs a plain ws:// connection, since it
-  // has no TLS to upgrade to.
-  const wsUrl = API_URL.replace(/^http/, 'ws') + `/api/rooms/${roomCode}/join?${params.toString()}`;
+// ============================================================================
+// ENHANCEMENTS – merged from app.js with fixes
+// ============================================================================
 
-  ws = new WebSocket(wsUrl);
+(function() {
+  'use strict';
 
-  ws.onopen = () => {
-    currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
-    roomView.style.display = 'none';
-    chatView.style.display = 'flex';
-    roomNameDisplay.textContent = `#${currentRoom.name}`;
-    roomCodeDisplay.textContent = 'Copy code';
-    roomTypeBadge.textContent = currentRoom.roomType;
-    addSystemMessage(`Connected to ${currentRoom.name || 'room'}`);
-  };
-
-  ws.onmessage = (event) => {
-    try {
-      handleMessage(JSON.parse(event.data));
-    } catch (e) {
-      console.error('Parse error:', e);
-    }
-  };
-
-  ws.onclose = (event) => {
-    // 4001: this account was just deleted (see ChatRoom.kickAccount) —
-    // log out entirely, not just disconnect from the room.
-    if (event.code === 4001) {
-      ws = null;
-      localStorage.removeItem('sessionToken');
-      sessionToken = null;
-      account = null;
-      chatView.style.display = 'none';
-      showAuthView();
-      authError.textContent = 'This account was deleted — connection closed.';
-      return;
-    }
-
-    // 4002: the room's password was just changed by its owner — everyone
-    // gets disconnected and needs to rejoin with the new password. 4003:
-    // an ephemeral room hit its 24h expiry.
-    if (event.code === 4002 || event.code === 4003) {
-      ws = null;
-      chatView.style.display = 'none';
-      manageRoomView.style.display = 'none';
-      showRoomView();
-      roomError.textContent = event.code === 4002
-        ? 'This room\u2019s password was changed \u2014 enter the new password to rejoin.'
-        : 'This room has expired.';
-      if (event.code === 4002 && currentRoom) {
-        roomCodeInput.value = currentRoom.roomCode;
-      }
-      return;
-    }
-
-    if (intentionalClose) {
-      intentionalClose = false;
-      return;
-    }
-
-    if (chatView.style.display === 'none' || chatView.style.display === '') {
-      roomError.textContent = 'Connection failed — check room code/password';
-      resetCreateBtn();
-    } else {
-      addSystemMessage('Disconnected');
-      chatView.style.display = 'none';
-      manageRoomView.style.display = 'none';
-      roomView.style.display = 'flex';
-    }
-  };
-
-  ws.onerror = (err) => console.error('WebSocket error:', err);
-}
-
-function handleMessage(data) {
-  switch (data.type) {
-    case 'chat-message':
-      addMessage(data.id, data.userId, data.username, data.message, false, data.timestamp, data.color, data.replyTo);
-      break;
-    case 'room-history':
-      // Now carries isOwner (whether THIS session is the room's owner),
-      // roomType, and participantCount alongside history — see
-      // chat-room.js's fetch() handler for why this piggybacks on
-      // room-history rather than being a separate message type. isOwner
-      // drives whether the "Manage" button is shown at all; it's purely
-      // a UI convenience — every actual owner-gated action re-checks
-      // ownership server-side independently (see requireRoomOwner in
-      // index.js), so nothing security-relevant depends on the client
-      // believing this flag.
-      if (currentRoom) {
-        currentRoom.isOwner = !!data.isOwner;
-        currentRoom.roomType = data.roomType || currentRoom.roomType;
-        roomTypeBadge.textContent = currentRoom.roomType;
-        manageRoomBtn.style.display = (currentRoom.isOwner && currentRoom.roomType !== 'ephemeral') ? 'inline-block' : 'none';
-      }
-      // participantCount is authoritative (computed server-side from the
-      // Durable Object's actual connected-socket count, AFTER this
-      // client's own socket was accepted) — set it directly rather than
-      // ever doing local +1/-1 arithmetic from a hardcoded starting
-      // point. That old approach undercounted every room this client
-      // didn't personally watch every join/leave event for, including
-      // itself: a hardcoded "0 users" baseline never learned about its
-      // OWN connection, only other people's subsequent events.
-      if (typeof data.participantCount === 'number') {
-        userCount.textContent = `${data.participantCount} users`;
-      }
-      data.messages.forEach(msg => {
-        const replyTo = msg.replyTo || (msg.replied_to_id ? {
-          id: msg.replied_to_id,
-          username: msg.replied_to_username,
-          snippet: msg.replied_to_snippet
-        } : null);
-        addMessage(msg.id, msg.user_id || msg.userId, msg.username, msg.message, false, msg.timestamp, null, replyTo);
-      });
-      break;
-    case 'user-joined':
-      addSystemMessage(`${data.username} joined`);
-      // Same authoritative-count approach as room-history above — trust
-      // the server's count rather than incrementing a local one, which
-      // stays correct even if this client ever missed a prior event.
-      if (typeof data.participantCount === 'number') {
-        userCount.textContent = `${data.participantCount} users`;
-      }
-      break;
-    case 'user-left':
-      addSystemMessage(`${data.username} left`);
-      if (typeof data.participantCount === 'number') {
-        userCount.textContent = `${data.participantCount} users`;
-      }
-      break;
-    // e2ee handshake/message types (Phase 5) are relayed by the server
-    // but this build doesn't yet implement client-side key generation or
-    // encrypt/decrypt — see the TODO block below handleMessage. Until
-    // that lands, e2ee rooms will connect and show history/join events
-    // normally, but sent "messages" won't actually be end-to-end
-    // encrypted content yet.
-    case 'e2ee-public-key':
-    case 'e2ee-existing-keys':
-    case 'e2ee-message':
-    case 'e2ee-message-sent':
-      console.log('e2ee protocol message (not yet handled client-side):', data);
-      break;
-    case 'error':
-      addSystemMessage(`\u26a0 ${data.message}`);
-      break;
-    default:
-      console.log('Unknown message:', data);
-  }
-}
-
-// TODO(e2ee crypto): this build wires the e2ee room TYPE end to end
-// (creation, owner key, joining, the server-side pairwise relay) but does
-// NOT yet implement the actual client-side cryptography — WebCrypto
-// keypair generation/storage, the e2ee-public-key handshake, or
-// encrypting/decrypting e2ee-message payloads. sendMessage() below
-// currently sends plain chat-message for every room type, which the
-// backend will correctly REJECT for e2ee rooms (see chat-room.js's
-// explicit guard against plaintext chat-message in e2ee rooms) — so e2ee
-// rooms are joinable and show presence/history correctly, but sending an
-// actual message in one will currently fail with a server error until
-// this TODO is implemented.
-
-function formatTime(ts) {
-  if (!ts) return '';
-  const d = new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServer, replyTo) {
-  const div = document.createElement('div');
-  div.className = 'message';
-  if (id) div.dataset.messageId = id;
-  if (sender) div.dataset.sender = sender;
-  if (text) div.dataset.text = text;
-
-  const timeStr = formatTime(timestamp);
-  const isSelf = account && sender === `${account.username}#${account.displayTag}`;
-  const color = colorFromServer || (userId ? colorForUserId(userId) : '#333');
-
-  const replyHtml = replyTo
-    ? `<div class="reply-quote">\u21aa ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
-    : '';
-
-  if (isSystem || sender === 'system') {
-    div.classList.add('system');
+  // ---- Helpers ----
+  function safeHtml(text) {
+    const div = document.createElement('div');
     div.textContent = text;
-  } else if (isSelf) {
-    div.classList.add('self');
-    div.innerHTML = `<div class="sender" style="color:${color}">You <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
+    return div.innerHTML;
+  }
+
+  function showToast(msg) {
+    const old = document.querySelector('.toast-notification');
+    if (old) old.remove();
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.textContent = msg;
+    Object.assign(toast.style, {
+      position: 'fixed',
+      bottom: '80px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-sm)',
+      padding: '0.5rem 1rem',
+      boxShadow: 'var(--shadow-md)',
+      zIndex: '300',
+      fontSize: '0.85rem',
+      color: 'var(--text)',
+      transition: 'opacity 0.2s',
+      opacity: '1',
+    });
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    }, 1500);
+  }
+
+  // ---- Markdown Parser ----
+  function parseMarkdown(text) {
+    let html = safeHtml(text);
+    html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<code class="md-code-block">${safeHtml(code.trim())}</code>`);
+    html = html.replace(/`([^`]+)`/g, (_, code) => `<code class="md-code">${safeHtml(code)}</code>`);
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="md-bold">$1</strong>');
+    html = html.replace(/__([^_]+)__/g, '<strong class="md-bold">$1</strong>');
+    html = html.replace(/\*([^*]+)\*/g, '<em class="md-italic">$1</em>');
+    html = html.replace(/_([^_]+)_/g, '<em class="md-italic">$1</em>');
+    html = html.replace(/^&gt;\s+(.*)$/gm, '<blockquote class="md-blockquote">$1</blockquote>');
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  }
+
+  // ---- Override addMessage with markdown ----
+  let originalAddMessage = null;
+  function overrideAddMessage() {
+    if (typeof window.addMessage === 'function') {
+      originalAddMessage = window.addMessage;
+      window.addMessage = function(id, userId, sender, text, isSystem, timestamp, colorFromServer, replyTo) {
+        if (isSystem || sender === 'system') {
+          return originalAddMessage(id, userId, sender, text, isSystem, timestamp, colorFromServer, replyTo);
+        }
+        const div = document.createElement('div');
+        div.className = 'message';
+        if (id) div.dataset.messageId = id;
+        if (sender) div.dataset.sender = sender;
+        if (text) div.dataset.text = text;
+
+        const timeStr = formatTime(timestamp);
+        const isSelf = window.account && sender === `${window.account.username}#${window.account.displayTag}`;
+        const color = colorFromServer || (userId ? colorForUserId(userId) : '#333');
+
+        const replyHtml = replyTo
+          ? `<div class="reply-quote">↪ ${safeHtml(replyTo.username || '')}: ${safeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
+          : '';
+
+        const renderedBody = parseMarkdown(text);
+
+        if (isSelf) {
+          div.classList.add('self');
+          div.innerHTML = `<div class="sender" style="color:${color}">You <span class="time">${timeStr}</span></div>${replyHtml}<div>${renderedBody}</div>`;
+        } else {
+          div.classList.add('other');
+          div.innerHTML = `<div class="sender" style="color:${color}">${safeHtml(sender)} <span class="time">${timeStr}</span></div>${replyHtml}<div>${renderedBody}</div>`;
+        }
+
+        // Long press copy
+        let pressTimer = null;
+        div.addEventListener('pointerdown', () => {
+          pressTimer = setTimeout(() => {
+            const textToCopy = div.dataset.text || text;
+            navigator.clipboard.writeText(textToCopy).then(() => showToast('Copied!')).catch(() => {});
+          }, 500);
+        });
+        div.addEventListener('pointerup', () => clearTimeout(pressTimer));
+        div.addEventListener('pointerleave', () => clearTimeout(pressTimer));
+
+        if (!isSystem && id) {
+          div.addEventListener('click', (e) => {
+            if (e.pointerType === 'mouse' && e.detail === 1) {
+              startReply(id, sender, text);
+            }
+          });
+        }
+
+        messageArea.appendChild(div);
+        messageArea.scrollTop = messageArea.scrollHeight;
+      };
+      console.log('[enhance] Markdown + long-press + reply active');
+    } else {
+      setTimeout(overrideAddMessage, 100);
+    }
+  }
+
+  // ---- Typing Indicator ----
+  let typingTimeout = null;
+  let typingEnabled = false;
+  const typingUsers = new Map();
+  const typingEl = document.getElementById('typing-indicator');
+  const typingText = document.getElementById('typing-text');
+
+  function updateTypingIndicator() {
+    const users = Array.from(typingUsers.values());
+    if (users.length === 0) {
+      typingEl.style.display = 'none';
+      return;
+    }
+    typingEl.style.display = 'block';
+    if (users.length === 1) {
+      typingText.textContent = `${users[0]} is typing…`;
+    } else if (users.length === 2) {
+      typingText.textContent = `${users[0]} and ${users[1]} are typing…`;
+    } else {
+      typingText.textContent = 'Several people are typing…';
+    }
+  }
+
+  function setupTyping() {
+    const input = document.getElementById('message-input');
+    if (!input) return;
+    input.addEventListener('input', function() {
+      if (!window.ws || window.ws.readyState !== WebSocket.OPEN) return;
+      if (!typingEnabled) {
+        typingEnabled = true;
+        window.ws.send(JSON.stringify({ type: 'typing', isTyping: true }));
+      }
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+          window.ws.send(JSON.stringify({ type: 'typing', isTyping: false }));
+        }
+        typingEnabled = false;
+      }, 1500);
+    });
+  }
+
+  // ---- User List ----
+  const userListEl = document.getElementById('user-list');
+  const userListToggle = document.getElementById('user-list-toggle');
+  const userListPanel = document.getElementById('user-list-panel');
+  const participants = new Map();
+
+  function updateUserList() {
+    if (!userListEl) return;
+    userListEl.innerHTML = '';
+    const sorted = Array.from(participants.values()).sort((a, b) => a.username.localeCompare(b.username));
+    for (const p of sorted) {
+      const item = document.createElement('div');
+      item.className = 'user-item';
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = p.color || '#888';
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'name';
+      nameSpan.textContent = p.username;
+      if (window.account && p.username === `${window.account.username}#${window.account.displayTag}`) {
+        nameSpan.textContent += ' (you)';
+        item.classList.add('you');
+      }
+      item.appendChild(dot);
+      item.appendChild(nameSpan);
+      userListEl.appendChild(item);
+    }
+  }
+
+  if (userListToggle) {
+    userListToggle.addEventListener('click', () => {
+      const visible = userListPanel.style.display !== 'none';
+      userListPanel.style.display = visible ? 'none' : 'block';
+    });
+  }
+
+  // ---- Unread Badge ----
+  const unreadBadge = document.getElementById('unread-badge');
+  let unreadCount = 0;
+  let scrollAtBottom = true;
+
+  function updateUnreadBadge() {
+    if (unreadCount === 0 || scrollAtBottom) {
+      unreadBadge.style.display = 'none';
+      return;
+    }
+    unreadBadge.style.display = 'block';
+    unreadBadge.textContent = unreadCount;
+  }
+
+  if (messageArea) {
+    messageArea.addEventListener('scroll', () => {
+      const threshold = 30;
+      const atBottom = messageArea.scrollHeight - messageArea.scrollTop - messageArea.clientHeight < threshold;
+      if (atBottom !== scrollAtBottom) {
+        scrollAtBottom = atBottom;
+        if (scrollAtBottom) {
+          unreadCount = 0;
+          updateUnreadBadge();
+        }
+      }
+    });
+  }
+
+  // ---- Mention Dropdown ----
+  const mentionDropdown = document.getElementById('mention-dropdown');
+  const mentionList = document.getElementById('mention-list');
+  let mentionFilter = '';
+  let mentionIndex = -1;
+
+  function setupMentions() {
+    const input = document.getElementById('message-input');
+    if (!input) return;
+    input.addEventListener('input', function() {
+      const val = this.value;
+      const cursor = this.selectionStart;
+      const atPos = val.lastIndexOf('@', cursor - 1);
+      if (atPos !== -1 && (atPos === 0 || val[atPos - 1] === ' ' || val[atPos - 1] === '\n')) {
+        const afterAt = val.slice(atPos + 1, cursor);
+        if (/^[a-zA-Z0-9_#]*$/.test(afterAt)) {
+          mentionFilter = afterAt;
+          showMentionDropdown(mentionFilter);
+          return;
+        }
+      }
+      hideMentionDropdown();
+    });
+
+    input.addEventListener('keydown', function(e) {
+      if (mentionDropdown.style.display === 'block') {
+        const items = mentionList.querySelectorAll('li');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          mentionIndex = Math.min(mentionIndex + 1, items.length - 1);
+          updateMentionHighlight(items);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          mentionIndex = Math.max(mentionIndex - 1, -1);
+          updateMentionHighlight(items);
+        } else if (e.key === 'Enter' || e.key === 'Tab') {
+          if (mentionIndex >= 0 && items[mentionIndex]) {
+            e.preventDefault();
+            selectMention(items[mentionIndex]);
+          }
+        } else if (e.key === 'Escape') {
+          hideMentionDropdown();
+        }
+      }
+    });
+  }
+
+  function showMentionDropdown(filter) {
+    const users = Array.from(participants.values());
+    const filtered = users.filter(p => p.username.toLowerCase().includes(filter.toLowerCase()));
+    if (filtered.length === 0) { hideMentionDropdown(); return; }
+    mentionList.innerHTML = '';
+    filtered.forEach((p, i) => {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = p.color || '#888';
+      li.appendChild(dot);
+      li.appendChild(document.createTextNode(p.username));
+      li.dataset.username = p.username;
+      li.addEventListener('click', () => selectMention(li));
+      li.addEventListener('mouseenter', () => {
+        const items = mentionList.querySelectorAll('li');
+        mentionIndex = i;
+        updateMentionHighlight(items);
+      });
+      mentionList.appendChild(li);
+    });
+    mentionIndex = -1;
+    mentionDropdown.style.display = 'block';
+    const input = document.getElementById('message-input');
+    const rect = input.getBoundingClientRect();
+    mentionDropdown.style.bottom = (rect.height + 8) + 'px';
+    mentionDropdown.style.left = '0';
+    mentionDropdown.style.width = Math.min(200, rect.width) + 'px';
+  }
+
+  function hideMentionDropdown() {
+    mentionDropdown.style.display = 'none';
+    mentionIndex = -1;
+  }
+
+  function updateMentionHighlight(items) {
+    items.forEach((li, i) => li.classList.toggle('active', i === mentionIndex));
+  }
+
+  function selectMention(li) {
+    const username = li.dataset.username;
+    const input = document.getElementById('message-input');
+    const val = input.value;
+    const cursor = input.selectionStart;
+    const atPos = val.lastIndexOf('@', cursor - 1);
+    if (atPos !== -1) {
+      const before = val.slice(0, atPos);
+      const after = val.slice(cursor);
+      input.value = before + '@' + username + ' ' + after;
+      input.focus();
+      input.selectionStart = input.selectionEnd = before.length + username.length + 2;
+    }
+    hideMentionDropdown();
+  }
+
+  // ---- Keyboard Shortcuts ----
+  function setupShortcuts() {
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const input = document.getElementById('message-input');
+        if (input) { input.focus(); input.select(); }
+      }
+      if (e.key === 'Escape') {
+        const cancelBtn = document.getElementById('reply-cancel-btn');
+        if (cancelBtn) cancelBtn.click();
+        if (mentionDropdown && mentionDropdown.style.display === 'block') {
+          hideMentionDropdown();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) sendBtn.click();
+      }
+    });
+  }
+
+  // ---- E2EE (client-side) ----
+  async function generateE2EEKeyPair() {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1,0,1]), hash: 'SHA-256' },
+      true,
+      ['encrypt', 'decrypt']
+    );
+    const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
+    const privateJwk = await crypto.subtle.exportKey('jwk', keyPair.privateKey);
+    return { publicKey: publicJwk, privateKey: privateJwk };
+  }
+
+  function getE2EEKey(roomCode) {
+    const stored = localStorage.getItem(`e2ee_keys_${roomCode}`);
+    if (stored) {
+      try { return JSON.parse(stored); } catch { return null; }
+    }
+    return null;
+  }
+
+  function storeE2EEKey(roomCode, keys) {
+    localStorage.setItem(`e2ee_keys_${roomCode}`, JSON.stringify(keys));
+  }
+
+  async function importPublicKey(jwk) {
+    return crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+  }
+
+  async function importPrivateKey(jwk) {
+    return crypto.subtle.importKey('jwk', jwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+  }
+
+  async function encryptFor(plaintext, publicJwk) {
+    const pubKey = await importPublicKey(publicJwk);
+    const enc = new TextEncoder();
+    const data = enc.encode(plaintext);
+    const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pubKey, data);
+    return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+  }
+
+  async function decryptWithPrivate(ciphertextB64, privateJwk) {
+    const privKey = await importPrivateKey(privateJwk);
+    const ciphertext = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0));
+    const decrypted = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  }
+
+  async function sendE2EEMessage(text) {
+    const roomCode = window.currentRoom?.roomCode;
+    if (!roomCode) return false;
+    const myKeys = getE2EEKey(roomCode);
+    if (!myKeys) { showToast('E2EE keys not initialized'); return false; }
+    const recipients = {};
+    const myId = window.account?.accountId;
+    for (const [userId, p] of participants) {
+      if (userId === myId) continue;
+      if (p.publicKey) {
+        try {
+          const cipher = await encryptFor(text, p.publicKey);
+          recipients[userId] = cipher;
+        } catch (e) { console.warn('Encrypt fail for', userId, e); }
+      }
+    }
+    if (Object.keys(recipients).length === 0) {
+      showToast('No other participants with public keys');
+      return false;
+    }
+    const id = crypto.randomUUID();
+    window.ws.send(JSON.stringify({ type: 'e2ee-message', id, recipients }));
+    return true;
+  }
+
+  async function handleE2EEMessage(data) {
+    const roomCode = window.currentRoom?.roomCode;
+    if (!roomCode) return;
+    const myKeys = getE2EEKey(roomCode);
+    if (!myKeys) return;
+    const { id, from, ciphertext } = data;
+    try {
+      const plaintext = await decryptWithPrivate(ciphertext, myKeys.privateKey);
+      if (typeof window.addMessage === 'function') {
+        const sender = participants.get(from)?.username || from;
+        window.addMessage(id, from, sender, '🔒 ' + plaintext, false, Date.now(), null, null);
+      }
+    } catch (e) { console.warn('Decrypt E2EE failed', e); }
+  }
+
+  function broadcastPublicKey(roomCode) {
+    const keys = getE2EEKey(roomCode);
+    if (!keys) return;
+    if (window.ws && window.ws.readyState === WebSocket.OPEN) {
+      window.ws.send(JSON.stringify({ type: 'e2ee-public-key', publicKey: keys.publicKey }));
+    }
+  }
+
+  // ---- Password visibility toggles (fixed alignment) ----
+  function setupPasswordToggles() {
+    const passwordInputs = document.querySelectorAll('input[type="password"]');
+    passwordInputs.forEach(input => {
+      if (input.closest('.password-wrapper')) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'password-wrapper';
+      input.parentNode.insertBefore(wrap, input);
+      wrap.appendChild(input);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'password-toggle';
+      btn.setAttribute('aria-label', 'Toggle password visibility');
+      btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+      wrap.appendChild(btn);
+      btn.addEventListener('click', () => {
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        btn.innerHTML = isPassword
+          ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+          : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+      });
+    });
+  }
+
+  // ---- 404 & URL routing ----
+  function show404(message) {
+    const notFound = document.getElementById('notfound-view');
+    if (notFound) {
+      notFound.style.display = 'flex';
+      const p = notFound.querySelector('p');
+      if (p && message) p.textContent = message;
+      // Hide all other views
+      document.getElementById('auth-view').style.display = 'none';
+      document.getElementById('room-view').style.display = 'none';
+      document.getElementById('chat-view').style.display = 'none';
+      document.getElementById('manage-room-view').style.display = 'none';
+    }
+  }
+
+  function routeUrl() {
+    const path = window.location.pathname;
+    if (path === '/' || path === '') return;
+    const match = path.match(/^\/room\/([a-f0-9]{32})$/);
+    if (match) {
+      const roomCode = match[1];
+      if (window.sessionToken && window.account) {
+        const checkAndJoin = () => {
+          if (document.getElementById('room-view').style.display !== 'none') {
+            const input = document.getElementById('room-code-input');
+            if (input) {
+              input.value = roomCode;
+              const joinBtn = document.getElementById('join-btn');
+              if (joinBtn) joinBtn.click();
+            }
+          } else {
+            setTimeout(checkAndJoin, 200);
+          }
+        };
+        checkAndJoin();
+        return;
+      } else {
+        show404('You need to log in first to join a room.');
+        return;
+      }
+    }
+    show404('Page not found.');
+  }
+
+  const notFoundBack = document.getElementById('notfound-back-btn');
+  if (notFoundBack) {
+    notFoundBack.addEventListener('click', function() {
+      document.getElementById('notfound-view').style.display = 'none';
+      if (window.account && window.sessionToken) {
+        document.getElementById('room-view').style.display = 'flex';
+      } else {
+        document.getElementById('auth-view').style.display = 'flex';
+      }
+    });
+  }
+
+  // ---- Intercept WebSocket for 404 & "Connected to room" name ----
+  function interceptWebSocketConnection() {
+    if (typeof window.connectWebSocket === 'function') {
+      const originalConnect = window.connectWebSocket;
+      window.connectWebSocket = function(params) {
+        originalConnect.call(window, params);
+        const checkWs = setInterval(() => {
+          if (window.ws) {
+            clearInterval(checkWs);
+            const origOnOpen = window.ws.onopen;
+            const origOnError = window.ws.onerror;
+            const origOnClose = window.ws.onclose;
+            let opened = false;
+            window.ws.onopen = function(e) {
+              opened = true;
+              const roomName = window.currentRoom?.name || 'room';
+              // Override system message for "Connected to"
+              const origAddSys = window.addSystemMessage;
+              if (origAddSys) {
+                window.addSystemMessage = function(msg) {
+                  if (msg.includes('Connected to ')) {
+                    msg = `Connected to ${roomName}`;
+                  }
+                  origAddSys(msg);
+                  window.addSystemMessage = origAddSys;
+                };
+              }
+              if (origOnOpen) origOnOpen.call(window.ws, e);
+            };
+            window.ws.onerror = function(e) {
+              if (!opened) {
+                // Room not found – show 404, keep session
+                show404('Room not found or network error.');
+                window.hideLoading && window.hideLoading();
+                return;
+              }
+              if (origOnError) origOnError.call(window.ws, e);
+            };
+            window.ws.onclose = function(e) {
+              // If we already handled 404, do nothing more
+              if (document.getElementById('notfound-view').style.display === 'flex') return;
+              if (origOnClose) origOnClose.call(window.ws, e);
+            };
+          }
+        }, 100);
+      };
+    } else {
+      setTimeout(interceptWebSocketConnection, 200);
+    }
+  }
+
+  // ---- Intercept WebSocket messages for extra features ----
+  function interceptWebSocketMessages() {
+    const checkWs = setInterval(() => {
+      if (window.ws && typeof window.ws.onmessage === 'function') {
+        clearInterval(checkWs);
+        const origOnMessage = window.ws.onmessage;
+        window.ws.onmessage = function(event) {
+          origOnMessage.call(window.ws, event);
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'typing') {
+              const userId = data.userId;
+              if (data.isTyping) {
+                typingUsers.set(userId, data.username);
+              } else {
+                typingUsers.delete(userId);
+              }
+              updateTypingIndicator();
+            } else if (data.type === 'e2ee-message') {
+              handleE2EEMessage(data);
+            } else if (data.type === 'e2ee-public-key') {
+              const userId = data.userId;
+              const pubKey = data.publicKey;
+              if (participants.has(userId)) {
+                participants.get(userId).publicKey = pubKey;
+              }
+            } else if (data.type === 'e2ee-existing-keys') {
+              for (const keyInfo of data.keys) {
+                if (participants.has(keyInfo.userId)) {
+                  participants.get(keyInfo.userId).publicKey = keyInfo.publicKey;
+                }
+              }
+            } else if (data.type === 'user-joined') {
+              participants.set(data.userId, {
+                username: data.username,
+                color: data.color,
+                publicKey: null
+              });
+              updateUserList();
+            } else if (data.type === 'user-left') {
+              participants.delete(data.userId);
+              typingUsers.delete(data.userId);
+              updateTypingIndicator();
+              updateUserList();
+            } else if (data.type === 'room-history') {
+              if (data.roomType === 'e2ee') {
+                const roomCode = window.currentRoom?.roomCode;
+                if (roomCode) {
+                  let keys = getE2EEKey(roomCode);
+                  if (!keys) {
+                    generateE2EEKeyPair().then(k => {
+                      storeE2EEKey(roomCode, k);
+                      broadcastPublicKey(roomCode);
+                    });
+                  } else {
+                    setTimeout(() => broadcastPublicKey(roomCode), 500);
+                  }
+                }
+              }
+            }
+          } catch (e) { /* ignore parse errors */ }
+        };
+      }
+    }, 200);
+  }
+
+  // ---- Loading timeout ----
+  function setupLoadingTimeout() {
+    const overlay = document.getElementById('loading-overlay');
+    if (!overlay) return;
+    const timeout = setTimeout(() => {
+      if (overlay.style.display === 'flex') {
+        overlay.style.display = 'none';
+        const errorEl = document.getElementById('auth-error') || document.getElementById('room-error');
+        if (errorEl && !errorEl.textContent) {
+          errorEl.textContent = 'Request timed out. Please try again.';
+        }
+      }
+    }, 10000);
+    const origHide = window.hideLoading;
+    window.hideLoading = function() {
+      clearTimeout(timeout);
+      if (origHide) origHide();
+    };
+  }
+
+  // ---- Init ----
+  function initEnhancements() {
+    overrideAddMessage();
+    setupTyping();
+    setupMentions();
+    setupShortcuts();
+    setupPasswordToggles();
+    routeUrl();
+    interceptWebSocketConnection();
+    interceptWebSocketMessages();
+    setupLoadingTimeout();
+    console.log('[enhance] All enhancements active (merged)');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initEnhancements);
   } else {
-    div.classList.add('other');
-    div.innerHTML = `<div class="sender" style="color:${color}">${escapeHtml(sender)} <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
+    initEnhancements();
   }
 
-  if (!isSystem && sender !== 'system' && id) {
-    div.addEventListener('click', () => startReply(id, sender, text));
-  }
+  // Expose helpers
+  window.__paranoid = {
+    participants,
+    typingUsers,
+    unreadCount,
+    generateE2EEKeyPair,
+    getE2EEKey,
+    storeE2EEKey,
+    encryptFor,
+    decryptWithPrivate,
+    sendE2EEMessage,
+    show404,
+  };
 
-  messageArea.appendChild(div);
-  messageArea.scrollTop = messageArea.scrollHeight;
-}
+})();
 
-function startReply(id, sender, text) {
-  replyingTo = { id, username: sender, snippet: text.slice(0, 120) };
-  replyPreviewText.textContent = `Replying to ${sender}: ${text.slice(0, 60)}${text.length > 60 ? '\u2026' : ''}`;
-  replyPreview.style.display = 'flex';
-  messageInput.focus();
-}
-
-replyCancelBtn.addEventListener('click', () => {
-  replyingTo = null;
-  replyPreview.style.display = 'none';
-});
-
-function addSystemMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'message system';
-  div.textContent = text;
-  messageArea.appendChild(div);
-  messageArea.scrollTop = messageArea.scrollHeight;
-}
-
-sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keydown', (e) => {
-  // Only trigger on the actual Enter press, not the browser's repeat-fire
-  // while the key is held, and ignore IME composition Enters (e.g.
-  // confirming a suggestion on some mobile keyboards) — e.isComposing is
-  // the standard way to detect that. Without this, some mobile virtual
-  // keyboards were firing this handler in a way that, combined with the
-  // Send button's own click handler, sent the same message twice.
-  if (e.key === 'Enter' && !e.repeat && !e.isComposing) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-let sendInFlight = false; // guards against sending the same message twice from two rapid triggers on the same physical action — e.g. a double-tap on the Send button (confirmed cause), or Enter's keydown plus a near-simultaneous click landing together
-const SEND_DEBOUNCE_MS = 500; // long enough to absorb a real double-tap (typically 100-300ms apart), short enough that it never blocks two genuinely separate messages sent close together
-
-function sendMessage() {
-  if (sendInFlight) return;
-
-  const text = messageInput.value.trim();
-  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
-  if (text.length > 2000) {
-    addSystemMessage('\u26a0 Message too long');
-    return;
-  }
-  if (currentRoom && currentRoom.roomType === 'e2ee') {
-    // See the e2ee crypto TODO above handleMessage — sending here would
-    // just be rejected by the server as plaintext in an e2ee room.
-    addSystemMessage('\u26a0 Sending in e2ee rooms isn\u2019t implemented in this build yet');
-    return;
-  }
-
-  sendInFlight = true;
-  sendBtn.disabled = true;
-  setTimeout(() => { sendInFlight = false; sendBtn.disabled = false; }, SEND_DEBOUNCE_MS);
-
-  const payload = { type: 'chat-message', message: text };
-  if (replyingTo) {
-    payload.replyTo = replyingTo.id;
-  }
-
-  ws.send(JSON.stringify(payload));
-  messageInput.value = '';
-  replyingTo = null;
-  replyPreview.style.display = 'none';
-}
-
-leaveBtn.addEventListener('click', leaveChat);
-
-// Available to EVERYONE in the room, not just the owner — this is the
-// only way a non-owner (or anyone in an ephemeral room, which has no
-// Manage panel at all — see manageRoomBtn's visibility logic above) can
-// ever see/copy the room's full code. Labeled "Copy code" explicitly
-// (rather than showing a truncated hex string that looked like plain
-// text and wasn't discoverable as tappable — the original version of
-// this element failed exactly that way in practice).
-roomCodeDisplay.addEventListener('click', () => {
-  if (!currentRoom) return;
-  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
-  const original = roomCodeDisplay.textContent;
-  roomCodeDisplay.textContent = 'Copied!';
-  setTimeout(() => { roomCodeDisplay.textContent = original; }, 1200);
-});
-
-function leaveChat() {
-  if (ws) { intentionalClose = true; ws.close(); ws = null; }
-  chatView.style.display = 'none';
-  manageRoomView.style.display = 'none';
-  roomView.style.display = 'flex';
-  messageArea.innerHTML = '';
-  userCount.textContent = '0 users';
-  // Reset explicitly rather than relying on chatView (its parent) being
-  // hidden to make this moot — the next room-history message will
-  // re-evaluate this correctly regardless, but leaving stale state lying
-  // around is fragile to reason about later.
-  manageRoomBtn.style.display = 'none';
-  currentRoom = null;
-  resetCreateBtn();
-}
-
-// updateUserCount was removed — participant counts now come directly
-// from the server's authoritative participantCount field on room-history/
-// user-joined/user-left (see handleMessage above), never computed
-// client-side.
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// ==================== Room management (owner-only) ====================
-// currentRoom.isOwner is set from the room-history message's isOwner
-// field (see handleMessage above), which the DO now includes based on
-// the X-Is-Owner header the Worker's join route sets. That flag is
-// purely a UI convenience for showing/hiding this button — every actual
-// owner-gated action (password change, minting/revoking join tokens)
-// independently re-checks ownership server-side via requireRoomOwner, so
-// nothing security-relevant depends on the client's copy of this flag
-// being honest.
-manageRoomBtn.addEventListener('click', () => {
-  if (!currentRoom) return;
-  openManageRoom();
-});
-manageCloseBtn.addEventListener('click', () => {
-  manageRoomView.style.display = 'none';
-  chatView.style.display = 'flex';
-});
-
-function openManageRoom() {
-  chatView.style.display = 'none';
-  manageRoomView.style.display = 'flex';
-  managePasswordError.textContent = '';
-  manageTokensError.textContent = '';
-  manageNewTokenBox.style.display = 'none';
-  manageCurrentPasswordInput.value = '';
-  manageNewPasswordInput.value = '';
-  manageSecretInput.value = '';
-
-  manageRoomCodeValue.textContent = currentRoom.roomCode;
-
-  const isE2ee = currentRoom.roomType === 'e2ee';
-  managePasswordSection.style.display = isE2ee ? 'none' : 'flex';
-  manageE2eeKeySection.style.display = isE2ee ? 'flex' : 'none';
-  manageSecretInput.placeholder = isE2ee ? 'Owner key' : 'Room password';
-
-  loadJoinTokens();
-}
-
-manageRoomCodeCopyBtn.addEventListener('click', () => {
-  if (!currentRoom) return;
-  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
-  manageRoomCodeCopyBtn.textContent = 'Copied';
-  setTimeout(() => { manageRoomCodeCopyBtn.textContent = 'Copy'; }, 1500);
-});
-
-manageChangePasswordBtn.addEventListener('click', async () => {
-  managePasswordError.textContent = '';
-  const currentPassword = manageCurrentPasswordInput.value;
-  const newPassword = manageNewPasswordInput.value;
-  if (!currentPassword || !newPassword || newPassword.length < 4) {
-    managePasswordError.textContent = 'Both fields required; new password min 4 characters';
-    return;
-  }
-
-  manageChangePasswordBtn.disabled = true;
-  try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/password`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken,
-      },
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      managePasswordError.textContent = data.error || 'Failed to change password';
-      return;
-    }
-    // Success kicks everyone (including this owner) via close code 4002,
-    // which ws.onclose already handles by returning to the room view with
-    // an explanatory message — nothing further to do here.
-    manageCurrentPasswordInput.value = '';
-    manageNewPasswordInput.value = '';
-  } catch (err) {
-    managePasswordError.textContent = 'Network error';
-  } finally {
-    manageChangePasswordBtn.disabled = false;
-  }
-});
-
-manageMintTokenBtn.addEventListener('click', async () => {
-  manageTokensError.textContent = '';
-  const secret = manageSecretInput.value;
-  if (!secret) {
-    manageTokensError.textContent = 'Enter the room password / owner key first';
-    return;
-  }
-
-  const isE2ee = currentRoom.roomType === 'e2ee';
-  const body = isE2ee ? { ownerKey: secret } : { currentPassword: secret };
-
-  manageMintTokenBtn.disabled = true;
-  try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken,
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      manageTokensError.textContent = data.error || 'Failed to mint join token';
-      return;
-    }
-    manageNewTokenValue.textContent = data.token;
-    manageNewTokenBox.style.display = 'block';
-    manageSecretInput.value = '';
-    loadJoinTokens();
-  } catch (err) {
-    manageTokensError.textContent = 'Network error';
-  } finally {
-    manageMintTokenBtn.disabled = false;
-  }
-});
-
-async function loadJoinTokens() {
-  manageTokensList.innerHTML = 'Loading\u2026';
-  try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
-      headers: { 'X-Session-Token': sessionToken },
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      manageTokensList.innerHTML = '';
-      manageTokensError.textContent = data.error || 'Failed to load join tokens';
-      return;
-    }
-    renderJoinTokens(data.tokens);
-  } catch (err) {
-    manageTokensList.innerHTML = '';
-    manageTokensError.textContent = 'Network error loading join tokens';
-  }
-}
-
-function renderJoinTokens(tokens) {
-  manageTokensList.innerHTML = '';
-  if (!tokens || tokens.length === 0) {
-    manageTokensList.innerHTML = '<p class="hint">No join tokens minted yet.</p>';
-    return;
-  }
-
-  tokens.forEach(t => {
-    const row = document.createElement('div');
-    row.className = 'token-row' + (t.revokedAt ? ' revoked' : '');
-
-    const info = document.createElement('div');
-    const created = new Date(t.createdAt * 1000).toLocaleDateString();
-    const usesText = t.uses.length === 0
-      ? 'never used'
-      : `used by ${t.uses.length} join${t.uses.length === 1 ? '' : 's'}`;
-    info.innerHTML = `Token ${escapeHtml(t.tokenId.slice(0, 8))}\u2026 \u00b7 created ${created}` +
-      `<div class="token-uses">${escapeHtml(usesText)}${t.revokedAt ? ' \u00b7 revoked' : ''}</div>`;
-
-    row.appendChild(info);
-
-    if (!t.revokedAt) {
-      const revokeBtn = document.createElement('button');
-      revokeBtn.type = 'button';
-      revokeBtn.textContent = 'Revoke';
-      revokeBtn.addEventListener('click', () => revokeJoinToken(t.tokenId));
-      row.appendChild(revokeBtn);
-    }
-
-    manageTokensList.appendChild(row);
-  });
-}
-
-async function revokeJoinToken(tokenId) {
-  manageTokensError.textContent = '';
-  try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens/${tokenId}`, {
-      method: 'DELETE',
-      headers: { 'X-Session-Token': sessionToken },
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      manageTokensError.textContent = data.error || 'Failed to revoke token';
-      return;
-    }
-    loadJoinTokens();
-  } catch (err) {
-    manageTokensError.textContent = 'Network error';
-  }
-}
-
-// ==================== Bootstrap ====================
-// No site-wide gate anymore — go straight to resuming a session or
-// showing the login/register screen.
-tryResumeSession();
