@@ -9,8 +9,98 @@
 </head>
 <body>
 
+  <!-- ========== PRIVACY & ToS MODAL ========== -->
+  <div id="legal-modal" style="display:none">
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <h2>Privacy Policy &amp; Terms of Service</h2>
+        <div class="legal-text">
+          <h3>Privacy Policy</h3>
+          <p>We collect your username and password to authenticate you. No personal data is stored or shared. Messages are ephemeral and not retained beyond the current session.</p>
+          <h3>Terms of Service</h3>
+          <p>By using this service you agree to use it responsibly. You are solely responsible for your actions and any content you send. The service is provided "as is" without warranties.</p>
+        </div>
+        <label><input type="checkbox" id="legal-privacy-check"> I have read and agree to the Privacy Policy</label>
+        <label><input type="checkbox" id="legal-tos-check"> I have read and agree to the Terms of Service</label>
+        <button id="legal-agree-btn" disabled>Agree &amp; Continue</button>
+        <p id="legal-error" class="hint error" style="display:none">Please accept both policies to continue.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== LOADING OVERLAY ========== -->
+  <div id="loading-overlay" style="display:none">
+    <div class="loading-spinner">
+      <svg viewBox="0 0 50 50" width="48" height="48">
+        <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4"/>
+      </svg>
+    </div>
+    <p id="loading-text">Loading…</p>
+  </div>
+
+  <!-- ========== SETTINGS MODAL ========== -->
+  <div id="settings-modal" style="display:none">
+    <div class="modal-overlay" id="settings-overlay">
+      <div class="modal-box">
+        <header class="modal-header">
+          <h2>Settings</h2>
+          <button id="settings-close-btn" class="icon-btn" aria-label="Close settings">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </header>
+        <div class="settings-group">
+          <label for="theme-select">Theme</label>
+          <select id="theme-select">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="system">System</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <label for="font-select">Font</label>
+          <select id="font-select">
+            <option value="Inter">Inter</option>
+            <option value="system">System UI</option>
+            <option value="serif">Serif</option>
+            <option value="mono">Monospace</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <h3>About the developer</h3>
+          <p>Built with care by <a href="https://lime.is-a.dev" target="_blank" rel="noopener">lime.is-a.dev</a></p>
+          <p class="hint">Secure, ephemeral chat with E2EE support.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 404 NOT FOUND VIEW ========== -->
+  <div id="notfound-view" style="display:none">
+    <div class="notfound-content">
+      <svg width="120" height="120" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="60" cy="60" r="50" stroke-dasharray="8 8" />
+        <line x1="40" y1="40" x2="80" y2="80" />
+        <line x1="80" y1="40" x2="40" y2="80" />
+      </svg>
+      <h1>404</h1>
+      <p>Room not found or invalid code.</p>
+      <button id="notfound-back-btn">Go back</button>
+    </div>
+  </div>
+
+  <!-- ========== AUTH VIEW ========== -->
   <div id="auth-view">
-    <h1>Paranoid Chat</h1>
+    <div class="view-header">
+      <h1>Paranoid Chat</h1>
+      <button id="auth-settings-btn" class="icon-btn" aria-label="Settings">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </button>
+    </div>
     <div id="auth-mode-toggle">
       <button id="auth-login-btn" class="mode-active" type="button">Log In</button>
       <button id="auth-register-btn" type="button">Sign Up</button>
@@ -20,14 +110,23 @@
     <p id="auth-hint" class="hint"></p>
     <div id="auth-hcaptcha" class="h-captcha"></div>
     <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--danger)">
-      hCaptcha site key not configured \u2014 set HCAPTCHA_SITE_KEY in script.js.
+      hCaptcha site key not configured — set HCAPTCHA_SITE_KEY in script.js.
     </p>
     <button id="auth-submit-btn">Log In</button>
     <div id="auth-error"></div>
   </div>
 
-
+  <!-- ========== ROOM VIEW ========== -->
   <div id="room-view" style="display:none">
+    <div class="view-header">
+      <span>Room</span>
+      <button id="room-settings-btn" class="icon-btn" aria-label="Settings">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </button>
+    </div>
     <div id="account-bar">
       Logged in as <span id="account-display"></span>
       <button id="logout-btn">Log out</button>
@@ -39,10 +138,6 @@
       <button id="mode-create-btn" type="button">Create</button>
     </div>
 
-    <!-- Join panel: works for all room types. A join token substitutes for
-         the room password entirely on password rooms; on e2ee rooms it adds
-         nothing beyond what already knowing the room code grants, per the
-         Phase 7 design — the fields just don't need to change based on type. -->
     <div id="join-panel">
       <input id="room-code-input" type="text" placeholder="Room code" autocomplete="off" spellcheck="false">
       <input id="room-password-input" type="password" placeholder="Room password (if required)">
@@ -50,8 +145,6 @@
       <button id="join-btn">Join Room</button>
     </div>
 
-    <!-- Create panel: room-type selector first, since it changes which
-         fields are relevant/required below. -->
     <div id="create-panel" style="display:none">
       <div id="room-type-toggle">
         <button id="type-password-btn" class="mode-active" type="button">Password Room</button>
@@ -59,37 +152,31 @@
         <button id="type-e2ee-btn" type="button">E2EE</button>
       </div>
       <p id="room-type-hint" class="hint"></p>
-
       <input id="room-name-input" type="text" placeholder="Room name (label, not unique)">
       <input id="new-room-password-input" type="password" placeholder="Set a room password (required)">
-
-      <!-- Only shown for ephemeral/e2ee — the app password is re-verified
-           here, at the moment of creating one of these two room types
-           specifically, not at login/register (see backend Phase 3). -->
-      <div id="gated-room-password-wrap" style="display:none">
+      <div id="gated-room-password-wrap">
         <input id="gated-room-app-password-input" type="password" placeholder="App password (required for this room type)">
       </div>
-
       <button id="create-btn">Create Room</button>
     </div>
 
     <div id="room-error"></div>
   </div>
 
-  <!-- Shown once, immediately after creating an e2ee room: the owner key.
-       This is the ONLY time it's ever shown — the server never stores or
-       returns it in plaintext again. Closing this without saving it means
-       it's gone for good, same as losing a room password. -->
+  <!-- ========== OWNER KEY MODAL ========== -->
   <div id="owner-key-modal" style="display:none">
-    <div id="owner-key-box">
-      <h2>Save this owner key</h2>
-      <p class="hint">This e2ee room has no room password. This key is the only way to mint join-invite tokens for it later. It is shown <strong>once</strong> and cannot be recovered if lost.</p>
-      <div id="owner-key-value"></div>
-      <button id="owner-key-copy-btn" type="button">Copy</button>
-      <button id="owner-key-close-btn" type="button">I've saved it — continue</button>
+    <div class="modal-overlay">
+      <div id="owner-key-box" class="modal-box">
+        <h2>Save this owner key</h2>
+        <p class="hint">This e2ee room has no room password. This key is the only way to mint join-invite tokens for it later. It is shown <strong>once</strong> and cannot be recovered if lost.</p>
+        <div id="owner-key-value"></div>
+        <button id="owner-key-copy-btn" type="button">Copy</button>
+        <button id="owner-key-close-btn" type="button">I've saved it — continue</button>
+      </div>
     </div>
   </div>
 
+  <!-- ========== CHAT VIEW ========== -->
   <div id="chat-view" style="display:none">
     <header>
       <span id="room-name-display"></span>
@@ -98,6 +185,12 @@
       <span id="user-count">0 users</span>
       <button id="manage-room-btn" style="display:none">Manage</button>
       <button id="leave-btn">Leave</button>
+      <button id="chat-settings-btn" class="icon-btn" aria-label="Settings">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </button>
     </header>
 
     <div id="message-area"></div>
@@ -113,21 +206,23 @@
     </div>
   </div>
 
-  <!-- Owner-only room management panel: change room password, mint/revoke
-       join tokens, see who joined via which token. Only ever shown when
-       the current session is the room's owner (server-confirmed via
-       X-Is-Owner on join — see script.js) and only for password/e2ee rooms
-       (ephemeral rooms have no owner-managed tokens, per backend Phase 7). -->
+  <!-- ========== MANAGE ROOM VIEW ========== -->
   <div id="manage-room-view" style="display:none">
     <header>
       <span>Manage room</span>
       <button id="manage-close-btn">Close</button>
+      <button id="manage-settings-btn" class="icon-btn" aria-label="Settings">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </button>
     </header>
 
     <div id="manage-body">
       <section id="manage-room-code-section">
         <h3>Room code</h3>
-        <p class="hint">Share this so others can join. It's also required alongside the room password (or a join token) to actually get in — knowing the code alone isn't enough for password/e2ee rooms.</p>
+        <p class="hint">Share this so others can join.</p>
         <div id="manage-room-code-value"></div>
         <button id="manage-room-code-copy-btn" type="button">Copy</button>
       </section>
@@ -137,13 +232,13 @@
         <input id="manage-current-password-input" type="password" placeholder="Current room password">
         <input id="manage-new-password-input" type="password" placeholder="New room password">
         <button id="manage-change-password-btn">Change password</button>
-        <p class="hint">Everyone currently connected will be disconnected and asked to rejoin with the new password.</p>
+        <p class="hint">Everyone will be disconnected and must rejoin.</p>
         <div id="manage-password-error"></div>
       </section>
 
       <section id="manage-e2ee-key-section" style="display:none">
         <h3>Owner key</h3>
-        <p class="hint">Required to mint join tokens for this room. It was only ever shown once, at creation — if you didn't save it, minting tokens is no longer possible for this room.</p>
+        <p class="hint">Required to mint join tokens. Shown only once at creation.</p>
       </section>
 
       <section id="manage-tokens-section">
@@ -162,7 +257,225 @@
     </div>
   </div>
 
+  <!-- ========== SCRIPT LOAD ========== -->
   <script src="/config.js"></script>
   <script src="script.js"></script>
+
+  <!-- ========== FRONTEND-ONLY PATCH (no backend changes) ========== -->
+  <script>
+    (function() {
+      'use strict';
+
+      // ---- LEGAL MODAL ----
+      const legalModal = document.getElementById('legal-modal');
+      const privacyCheck = document.getElementById('legal-privacy-check');
+      const tosCheck = document.getElementById('legal-tos-check');
+      const legalAgree = document.getElementById('legal-agree-btn');
+      const legalError = document.getElementById('legal-error');
+
+      function checkLegal() {
+        const ok = privacyCheck.checked && tosCheck.checked;
+        legalAgree.disabled = !ok;
+        legalError.style.display = 'none';
+        return ok;
+      }
+      privacyCheck.addEventListener('change', checkLegal);
+      tosCheck.addEventListener('change', checkLegal);
+
+      legalAgree.addEventListener('click', function() {
+        if (!checkLegal()) {
+          legalError.style.display = 'block';
+          return;
+        }
+        localStorage.setItem('paranoid-chat-legal-accepted', 'true');
+        legalModal.style.display = 'none';
+      });
+
+      // Show legal modal on first visit
+      if (!localStorage.getItem('paranoid-chat-legal-accepted')) {
+        legalModal.style.display = 'flex';
+      }
+
+      // ---- LOADING OVERLAY ----
+      const loadingOverlay = document.getElementById('loading-overlay');
+      const loadingText = document.getElementById('loading-text');
+
+      window.showLoading = function(text) {
+        loadingText.textContent = text || 'Loading…';
+        loadingOverlay.style.display = 'flex';
+      };
+      window.hideLoading = function() {
+        loadingOverlay.style.display = 'none';
+      };
+
+      // ---- SETTINGS MODAL ----
+      const settingsModal = document.getElementById('settings-modal');
+      const settingsClose = document.getElementById('settings-close-btn');
+      const settingsOverlay = document.getElementById('settings-overlay');
+      const themeSelect = document.getElementById('theme-select');
+      const fontSelect = document.getElementById('font-select');
+
+      function openSettings() {
+        settingsModal.style.display = 'flex';
+        // load saved
+        const savedTheme = localStorage.getItem('paranoid-chat-theme') || 'system';
+        const savedFont = localStorage.getItem('paranoid-chat-font') || 'Inter';
+        themeSelect.value = savedTheme;
+        fontSelect.value = savedFont;
+        applyTheme(savedTheme);
+        applyFont(savedFont);
+      }
+
+      function closeSettings() {
+        settingsModal.style.display = 'none';
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('paranoid-chat-theme', theme);
+      }
+      function applyFont(font) {
+        document.documentElement.style.setProperty('--font-family', font);
+        localStorage.setItem('paranoid-chat-font', font);
+      }
+
+      themeSelect.addEventListener('change', function() {
+        applyTheme(this.value);
+      });
+      fontSelect.addEventListener('change', function() {
+        applyFont(this.value);
+      });
+
+      // Close settings
+      settingsClose.addEventListener('click', closeSettings);
+      settingsOverlay.addEventListener('click', function(e) {
+        if (e.target === this) closeSettings();
+      });
+
+      // Settings buttons
+      document.querySelectorAll('#auth-settings-btn, #room-settings-btn, #chat-settings-btn, #manage-settings-btn')
+        .forEach(btn => btn.addEventListener('click', openSettings));
+
+      // ---- 404 NOT FOUND VIEW ----
+      const notFoundView = document.getElementById('notfound-view');
+      const notFoundBack = document.getElementById('notfound-back-btn');
+
+      window.show404 = function(reason) {
+        // Hide all other views
+        document.getElementById('auth-view').style.display = 'none';
+        document.getElementById('room-view').style.display = 'none';
+        document.getElementById('chat-view').style.display = 'none';
+        document.getElementById('manage-room-view').style.display = 'none';
+        notFoundView.style.display = 'flex';
+        // Optionally set reason
+        const p = notFoundView.querySelector('p');
+        if (reason) p.textContent = reason;
+        else p.textContent = 'Room not found or invalid code.';
+      };
+
+      notFoundBack.addEventListener('click', function() {
+        notFoundView.style.display = 'none';
+        // Try to go back to auth or room view
+        if (window.account) {
+          document.getElementById('room-view').style.display = 'flex';
+        } else {
+          document.getElementById('auth-view').style.display = 'flex';
+        }
+      });
+
+      // ---- MONITOR FOR ROOM ERRORS (404 detection without touching script.js) ----
+      const roomErrorEl = document.getElementById('room-error');
+      const originalSet = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'textContent');
+      // Observe changes to room-error textContent via MutationObserver
+      const observer = new MutationObserver(function() {
+        const text = roomErrorEl.textContent || '';
+        const lower = text.toLowerCase();
+        // Catch phrases that indicate a missing/invalid room
+        if (lower.includes('connection failed') ||
+            lower.includes('check room code') ||
+            lower.includes('invalid') ||
+            lower.includes('not found') ||
+            lower.includes('does not exist') ||
+            lower.includes('room code') && lower.includes('valid')) {
+          // Only trigger if we are not already in 404 view
+          if (notFoundView.style.display !== 'flex') {
+            // Don't show 404 for password errors or generic network flukes that aren't room-not-found
+            // Be conservative: only if it explicitly says "connection failed" or "check room code"
+            if (lower.includes('connection failed') || lower.includes('check room code') || lower.includes('not found')) {
+              window.show404(text);
+            }
+          }
+        }
+      });
+      observer.observe(roomErrorEl, { childList: true, characterData: true, subtree: true });
+
+      // Also intercept join button clicks to show loading, and hide 404
+      const joinBtn = document.getElementById('join-btn');
+      const origClick = joinBtn.click;
+      joinBtn.addEventListener('click', function() {
+        // If 404 is shown, hide it
+        if (notFoundView.style.display === 'flex') {
+          notFoundView.style.display = 'none';
+          document.getElementById('room-view').style.display = 'flex';
+        }
+        window.showLoading('Joining room…');
+        // Loading will be hidden by the script's success/error flow, but we need to hide it on error too
+        // We'll observe the roomError for 'connection failed' to hide loading and show 404
+        const checkError = setInterval(function() {
+          const err = roomErrorEl.textContent || '';
+          if (err.length > 0) {
+            window.hideLoading();
+            clearInterval(checkError);
+          }
+        }, 100);
+        // Also hide after 15s timeout
+        setTimeout(function() {
+          window.hideLoading();
+          clearInterval(checkError);
+        }, 15000);
+      }, true);
+
+      // Auth submit loading
+      const authSubmit = document.getElementById('auth-submit-btn');
+      authSubmit.addEventListener('click', function() {
+        if (this.disabled) return;
+        const mode = document.querySelector('#auth-mode-toggle .mode-active');
+        const label = mode ? mode.textContent.trim() : 'Log In';
+        window.showLoading(label + '…');
+        // Observe auth error to hide loading
+        const authError = document.getElementById('auth-error');
+        const checkAuth = setInterval(function() {
+          if (authError.textContent.length > 0 || authSubmit.disabled === false) {
+            window.hideLoading();
+            clearInterval(checkAuth);
+          }
+        }, 100);
+        setTimeout(function() { window.hideLoading(); clearInterval(checkAuth); }, 15000);
+      }, true);
+
+      // Create room loading
+      const createBtn = document.getElementById('create-btn');
+      createBtn.addEventListener('click', function() {
+        if (this.disabled) return;
+        window.showLoading('Creating room…');
+        const checkCreate = setInterval(function() {
+          const err = roomErrorEl.textContent || '';
+          if (err.length > 0 || createBtn.disabled === false) {
+            window.hideLoading();
+            clearInterval(checkCreate);
+          }
+        }, 100);
+        setTimeout(function() { window.hideLoading(); clearInterval(checkCreate); }, 15000);
+      }, true);
+
+      // ---- RESTORE THEME/FONT ON LOAD ----
+      const savedTheme = localStorage.getItem('paranoid-chat-theme') || 'system';
+      const savedFont = localStorage.getItem('paranoid-chat-font') || 'Inter';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      document.documentElement.style.setProperty('--font-family', savedFont);
+
+      console.log('Frontend enhancements loaded (legal, loading, settings, 404). Backend untouched.');
+    })();
+  </script>
 </body>
 </html>
