@@ -1,22 +1,13 @@
-/* Violet Dusk theme — flat, no gradients. */
 :root {
-  --bg: #1A0E1C;
-  --surface: #2A1A2E;
-  --border: #3D2A42;
-  --text: #F8F4E9;
-  --text-muted: #B098A0;
-  --accent: #935073;
-  --accent-hover: #A05D80;
-  --accent-text: #F8F4E9;
-  --danger: #D46A8A;
-  --danger-bg: #3D1A2E;
-  --success: #A8C4A0;
-  --input-bg: #1A0E1C;
-  --hover-bg: #3D2A42;
-  --active-bg: #502D55;
-  --quote-border: #935073;
-  --self-msg-bg: #2A1A2E;
-  --self-msg-border: #935073;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --border: #e0e0e0;
+  --text: #1a1a1a;
+  --text-muted: #6b6b6b;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --success: #16a34a;
 }
 
 * { box-sizing: border-box; }
@@ -50,14 +41,14 @@ input {
   font-family: inherit;
   font-size: 0.95rem;
   padding: 0.55rem 0.6rem;
-  background: var(--input-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
   width: 100%;
 }
 
-input::placeholder { color: var(--text-muted); }
+input::placeholder { color: #a3a3a3; }
 
 input:focus {
   outline: none;
@@ -76,8 +67,8 @@ button {
   cursor: pointer;
 }
 
-button:hover { background: var(--hover-bg); }
-button:active { background: var(--active-bg); }
+button:hover { background: #f0f0f0; }
+button:active { background: #e5e5e5; }
 
 button:focus-visible {
   outline: 2px solid var(--accent);
@@ -90,7 +81,7 @@ button:disabled {
 }
 button:disabled:hover { background: var(--surface); }
 
-/* Primary actions: flat solid accent */
+/* Primary actions: flat solid accent, no gradient */
 #auth-submit-btn, #join-btn, #create-btn, #send-btn,
 #manage-change-password-btn, #manage-mint-token-btn,
 #owner-key-close-btn {
@@ -101,8 +92,8 @@ button:disabled:hover { background: var(--surface); }
 #auth-submit-btn:hover, #join-btn:hover, #create-btn:hover, #send-btn:hover,
 #manage-change-password-btn:hover, #manage-mint-token-btn:hover,
 #owner-key-close-btn:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 #delete-account-btn {
@@ -110,8 +101,7 @@ button:disabled:hover { background: var(--surface); }
   color: var(--danger);
 }
 #delete-account-btn:hover {
-  background: var(--danger-bg);
-  border-color: var(--danger);
+  background: #fef2f2;
 }
 
 .hint {
@@ -141,7 +131,7 @@ button:disabled:hover { background: var(--surface); }
 }
 
 #auth-mode-toggle button:hover, #mode-toggle button:hover, #room-type-toggle button:hover {
-  background: var(--hover-bg);
+  background: #f0f0f0;
 }
 
 #auth-mode-toggle button.mode-active, #mode-toggle button.mode-active, #room-type-toggle button.mode-active {
@@ -201,7 +191,18 @@ header > span:first-child {
   white-space: nowrap;
 }
 
-#room-code-display { color: var(--text-muted); font-weight: 400; font-size: 0.75rem; }
+#room-code-display {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+#room-code-display:hover { color: var(--text); background: none; }
 
 #room-type-badge {
   font-size: 0.65rem;
@@ -269,8 +270,8 @@ header > span:first-child {
 }
 
 .message.self div:last-child {
-  background: var(--self-msg-bg);
-  border-color: var(--self-msg-border);
+  background: #eff6ff;
+  border-color: #bfdbfe;
 }
 
 .time {
@@ -285,7 +286,7 @@ header > span:first-child {
 .reply-quote {
   font-size: 0.72rem;
   color: var(--text-muted);
-  border-left: 2px solid var(--quote-border);
+  border-left: 2px solid var(--border);
   padding: 0.2rem 0.5rem;
   margin: 0.2rem 0;
   max-width: 100%;
@@ -333,11 +334,11 @@ header > span:first-child {
 
 #room-type-hint { min-height: 2.2em; }
 
-/* ---- Owner key modal ---- */
+/* ---- Owner key modal (e2ee room creation) ---- */
 #owner-key-modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -351,20 +352,18 @@ header > span:first-child {
   padding: 1.5rem;
   max-width: 400px;
   width: 100%;
-  border: 1px solid var(--border);
 }
 
 #owner-key-value {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.85rem;
-  background: var(--input-bg);
+  background: #f5f5f5;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.6rem;
   margin: 0.6rem 0;
   word-break: break-all;
   user-select: all;
-  color: var(--text);
 }
 
 #owner-key-copy-btn { margin-right: 0.4rem; }
@@ -395,13 +394,12 @@ header > span:first-child {
 #manage-room-code-value {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.8rem;
-  background: var(--input-bg);
+  background: #f5f5f5;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem;
   word-break: break-all;
   user-select: all;
-  color: var(--text);
 }
 
 #manage-room-code-section { margin-bottom: 0; }
@@ -425,9 +423,6 @@ header > span:first-child {
   padding: 0.2rem 0.5rem;
   border-color: var(--danger);
   color: var(--danger);
-}
-.token-row button:hover {
-  background: var(--danger-bg);
 }
 
 .token-uses {
