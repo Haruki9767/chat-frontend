@@ -1,3 +1,5 @@
+/* Simple, flat theme. No gradients anywhere by design. */
+
 :root {
   --bg: #fafafa;
   --surface: #ffffff;
@@ -192,17 +194,18 @@ header > span:first-child {
 }
 
 #room-code-display {
-  color: var(--text-muted);
-  font-weight: 400;
-  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.7rem;
   background: none;
-  border: none;
-  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
   cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-#room-code-display:hover { color: var(--text); background: none; }
+#room-code-display:hover { background: #eff6ff; }
 
 #room-type-badge {
   font-size: 0.65rem;
