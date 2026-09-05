@@ -1,8 +1,28 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
+// TODO(frontend config): set this to your actual hCaptcha site key before
+// deploying. This is the PUBLIC key — safe to embed client-side (unlike
+// the secret key, which only ever lives on the separate hCaptcha
+// verification Worker, never here). Without a real value, the widget
+// will not render and login/register will be blocked client-side (see
+// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-
+// The separate, standalone Cloudflare Worker dedicated to hCaptcha
+// verification (owns the secret key and the actual siteverify call —
+// never this frontend, never the chat backend). Called DIRECTLY from
+// here, in the browser, rather than by the chat backend server-to-server
+// — that Worker's own CORS layer (HCAPTCHA_ALLOWED_ORIGINS) exists
+// specifically to support being called this way. This backend/frontend
+// split was chosen after repeated, unresolved 404s calling this same
+// endpoint Worker-to-Worker from inside the chat backend, which did not
+// reproduce via curl or from a browser — see index.js's comments above
+// where verifyHcaptcha used to live for the full account of that.
+//
+// Security note: since verification now happens entirely client-side,
+// hCaptcha is an abuse deterrent, not a hard guarantee — the chat
+// backend no longer independently re-checks it. This was a deliberate,
+// informed tradeoff.
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
@@ -26,6 +46,8 @@ const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
 const authPasswordInput = document.getElementById('auth-password-input');
+const authAppPasswordWrap = document.getElementById('auth-app-password-wrap');
+const authAppPasswordInput = document.getElementById('auth-app-password-input');
 const authHint = document.getElementById('auth-hint');
 const authSubmitBtn = document.getElementById('auth-submit-btn');
 const authError = document.getElementById('auth-error');
@@ -180,16 +202,21 @@ authRegisterBtn.addEventListener('click', () => setAuthMode('register'));
 function setAuthMode(m) {
   authMode = m;
   authError.textContent = '';
+  authAppPasswordInput.value = '';
   if (m === 'login') {
     authLoginBtn.classList.add('mode-active');
     authRegisterBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Log In';
     authHint.textContent = '';
+    authAppPasswordWrap.style.display = 'none';
   } else {
     authRegisterBtn.classList.add('mode-active');
     authLoginBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Sign Up';
     authHint.textContent = 'Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
+    // The app password gates account creation (registration) but not
+    // login — a returning account holder isn't creating anything new.
+    authAppPasswordWrap.style.display = 'block';
   }
 }
 
@@ -203,6 +230,19 @@ authSubmitBtn.addEventListener('click', async () => {
     authError.textContent = 'Username and password required';
     return;
   }
+
+  // App password gates account CREATION (registration) specifically —
+  // not login, since a returning account holder isn't creating anything
+  // new. Matches the same requirement now on every room-creation route.
+  let appPassword = '';
+  if (authMode === 'register') {
+    appPassword = authAppPasswordInput.value;
+    if (!appPassword) {
+      authError.textContent = 'App password required to create an account';
+      return;
+    }
+  }
+
   if (!hcaptchaToken) {
     authError.textContent = HCAPTCHA_SITE_KEY
       ? 'Please complete the captcha'
@@ -211,6 +251,7 @@ authSubmitBtn.addEventListener('click', async () => {
   }
 
   authSubmitBtn.disabled = true;
+  setButtonLoading(authSubmitBtn, true);
 
   // Verified directly against the hCaptcha verification Worker, in the
   // browser, BEFORE ever calling the chat backend — see
@@ -220,16 +261,18 @@ authSubmitBtn.addEventListener('click', async () => {
   if (!verified) {
     authError.textContent = 'hCaptcha verification failed \u2014 please try again';
     authSubmitBtn.disabled = false;
+    setButtonLoading(authSubmitBtn, false);
     resetHcaptcha();
     return;
   }
 
   const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+  const extraHeaders = authMode === 'register' ? { 'X-App-Password': appPassword } : {};
 
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
@@ -249,6 +292,7 @@ authSubmitBtn.addEventListener('click', async () => {
     authError.textContent = 'Network error';
   } finally {
     authSubmitBtn.disabled = false;
+    setButtonLoading(authSubmitBtn, false);
     resetHcaptcha();
   }
 });
@@ -414,7 +458,7 @@ async function createAndJoin() {
   }
 
   createBtn.disabled = true;
-  createBtn.textContent = 'Creating...';
+  setButtonLoading(createBtn, true, 'Creating\u2026');
 
   try {
     const res = await fetch(`${API_URL}${endpoint}`, {
@@ -473,7 +517,7 @@ async function createAndJoin() {
 
 function resetCreateBtn() {
   createBtn.disabled = false;
-  createBtn.textContent = 'Create Room';
+  setButtonLoading(createBtn, false);
 }
 
 function showOwnerKeyModal(key, onContinue) {
@@ -485,9 +529,7 @@ function showOwnerKeyModal(key, onContinue) {
   };
   ownerKeyCloseBtn.onclick = close;
   ownerKeyCopyBtn.onclick = () => {
-    navigator.clipboard.writeText(key).catch(() => {});
-    ownerKeyCopyBtn.textContent = 'Copied';
-    setTimeout(() => { ownerKeyCopyBtn.textContent = 'Copy'; }, 1500);
+    copyToClipboard(key, ownerKeyCopyBtn, 'Copy');
   };
 }
 
@@ -502,7 +544,15 @@ function joinChat() {
     return;
   }
 
+  joinBtn.disabled = true;
+  setButtonLoading(joinBtn, true, 'Joining\u2026');
+
   connectWebSocket({ roomCode, roomPassword, joinToken });
+}
+
+function resetJoinBtn() {
+  joinBtn.disabled = false;
+  setButtonLoading(joinBtn, false);
 }
 
 function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
@@ -518,6 +568,12 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
+    // Clears whichever of Join/Create triggered this connection — only
+    // one is ever actually mid-loading at a time, resetting both
+    // unconditionally is harmless and avoids needing to track which one
+    // initiated this particular connectWebSocket call.
+    resetJoinBtn();
+    resetCreateBtn();
     currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
     roomView.style.display = 'none';
     chatView.style.display = 'flex';
@@ -574,6 +630,7 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
     if (chatView.style.display === 'none' || chatView.style.display === '') {
       roomError.textContent = 'Connection failed — check room code/password';
       resetCreateBtn();
+      resetJoinBtn();
     } else {
       addSystemMessage('Disconnected');
       chatView.style.display = 'none';
@@ -792,10 +849,7 @@ leaveBtn.addEventListener('click', leaveChat);
 // this element failed exactly that way in practice).
 roomCodeDisplay.addEventListener('click', () => {
   if (!currentRoom) return;
-  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
-  const original = roomCodeDisplay.textContent;
-  roomCodeDisplay.textContent = 'Copied!';
-  setTimeout(() => { roomCodeDisplay.textContent = original; }, 1200);
+  copyToClipboard(currentRoom.roomCode, roomCodeDisplay, 'Copy code');
 });
 
 function leaveChat() {
@@ -818,6 +872,66 @@ function leaveChat() {
 // from the server's authoritative participantCount field on room-history/
 // user-joined/user-left (see handleMessage above), never computed
 // client-side.
+
+// Copies text to the clipboard and only shows a success confirmation
+// once it's actually confirmed to have worked — the original version of
+// every copy button here fired-and-forgot the Clipboard API promise and
+// showed "Copied" unconditionally, which would have been a silent lie in
+// any environment where navigator.clipboard is unavailable or denied
+// (several Android WebView configurations fall into this category,
+// unlike a full mobile browser). Falls back to the older
+// document.execCommand('copy') approach — a hidden, temporary textarea
+// — which has much broader compatibility, including in WebViews that
+// don't expose the modern Clipboard API at all.
+async function copyToClipboard(text, button, resetLabel) {
+  let ok = false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      ok = false;
+    }
+  }
+  if (!ok) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch {
+      ok = false;
+    }
+  }
+
+  button.textContent = ok ? 'Copied' : 'Copy failed \u2014 select manually';
+  setTimeout(() => { button.textContent = resetLabel; }, 1800);
+}
+
+// Feature: loading states for any action with real network latency (join,
+// create, sign in, log in, etc.) — replaces a button's label with a
+// spinner + "Working..." text and disables it, so an action with a wait
+// never just sits there with no feedback. Restores the original label on
+// loading(false), so callers don't need to remember it themselves.
+const buttonOriginalLabels = new WeakMap();
+function setButtonLoading(button, loading, loadingText) {
+  if (loading) {
+    if (!buttonOriginalLabels.has(button)) {
+      buttonOriginalLabels.set(button, button.innerHTML);
+    }
+    button.innerHTML = `<span class="spinner" aria-hidden="true"></span>${escapeHtml(loadingText || 'Working\u2026')}`;
+  } else {
+    const original = buttonOriginalLabels.get(button);
+    if (original !== undefined) {
+      button.innerHTML = original;
+    }
+  }
+}
 
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -865,9 +979,7 @@ function openManageRoom() {
 
 manageRoomCodeCopyBtn.addEventListener('click', () => {
   if (!currentRoom) return;
-  navigator.clipboard.writeText(currentRoom.roomCode).catch(() => {});
-  manageRoomCodeCopyBtn.textContent = 'Copied';
-  setTimeout(() => { manageRoomCodeCopyBtn.textContent = 'Copy'; }, 1500);
+  copyToClipboard(currentRoom.roomCode, manageRoomCodeCopyBtn, 'Copy');
 });
 
 manageChangePasswordBtn.addEventListener('click', async () => {
@@ -1013,6 +1125,7 @@ async function revokeJoinToken(tokenId) {
   }
 }
 
+// ==================== Bootstrap ====================
 // No site-wide gate anymore — go straight to resuming a session or
 // showing the login/register screen.
 tryResumeSession();
