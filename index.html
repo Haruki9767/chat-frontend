@@ -17,12 +17,15 @@
     </div>
     <input id="auth-username-input" type="text" placeholder="Username" autocomplete="username">
     <input id="auth-password-input" type="password" placeholder="Password" autocomplete="current-password">
+    <div id="auth-app-password-wrap" style="display:none">
+      <input id="auth-app-password-input" type="password" placeholder="App password" autocomplete="off">
+    </div>
     <p id="auth-hint" class="hint"></p>
     <div id="auth-hcaptcha" class="h-captcha"></div>
-    <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--danger)">
-      hCaptcha site key not configured \u2014 set HCAPTCHA_SITE_KEY in script.js.
+    <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--signal)">
+      hCaptcha site key not configured
     </p>
-    <button id="auth-submit-btn">Log In</button>
+    <button id="auth-submit-btn" class="primary">Log In</button>
     <div id="auth-error"></div>
   </div>
 
