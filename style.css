@@ -20,9 +20,6 @@
   --radius-md: 6px;
 }
 
-/* ---- Alternate themes (Settings > Theme) — each stays within the same
-   design world (flat color, no gradients, one accent per screen); only
-   the palette changes, never the structural principles. ---- */
 html[data-theme="dusk"] {
   --ink: #EDEBE4;
   --paper: #17181B;
@@ -279,11 +276,23 @@ button.danger:hover, #delete-account-btn:hover { background: var(--signal-tint);
 
 header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
+}
+
+#header-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+#header-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 #room-name-display {
@@ -329,7 +338,6 @@ header {
   color: var(--muted);
   white-space: nowrap;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 #leave-btn, #manage-room-btn, #manage-close-btn {
@@ -337,6 +345,13 @@ header {
   padding: 0.35rem 0.6rem;
   flex-shrink: 0;
 }
+
+/* Leave always sits at the far right of its own row; Manage (owner-only,
+   when shown) sits just before it — this is the "wrap Leave below" fix:
+   rather than let the whole header overflow/wrap unpredictably when an
+   owner's extra Manage button doesn't fit, actions get their own
+   dedicated row underneath the room identity row, every time. */
+#leave-btn { margin-left: auto; }
 
 #message-area {
   flex: 1;
@@ -509,6 +524,11 @@ header {
 
 #auth-error, #room-error, #manage-password-error, #manage-tokens-error {
   color: var(--signal);
+  font-size: 0.8rem;
+  min-height: 1.2em;
+}
+#manage-password-success {
+  color: var(--accent);
   font-size: 0.8rem;
   min-height: 1.2em;
 }
