@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   --ink: #14161A;
@@ -20,6 +20,9 @@
   --radius-md: 6px;
 }
 
+/* ---- Alternate themes (Settings > Theme) — each stays within the same
+   design world (flat color, no gradients, one accent per screen); only
+   the palette changes, never the structural principles. ---- */
 html[data-theme="dusk"] {
   --ink: #EDEBE4;
   --paper: #17181B;
@@ -48,16 +51,26 @@ html[data-theme="ledger"] {
   --signal-tint: #F0DFCF;
 }
 
-/* ---- Alternate fonts (Settings > Font) — only the serif (used for
-   numeric/identity elements) changes; Inter remains the sans throughout,
-   since swapping the UI's body font is a much bigger visual disruption
-   than swapping only the numeral treatment. ---- */
-html[data-font="sans-only"] {
-  --serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/* ---- Alternate fonts (Settings > Font) — each option sets BOTH --serif
+   and --sans, changing the WHOLE UI's typography (buttons, labels,
+   messages, inputs — not just numeric/identity elements as an earlier
+   version of this system did). Every pairing still respects the two-role
+   split from DESIGN.md (one serif for numeric/identity elements, one
+   sans for everything else) — only WHICH fonts fill those two roles
+   changes, never the underlying structural principle. ---- */
+html[data-font="mono"] {
+  --serif: ui-monospace, 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
+  --sans: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-html[data-font="mono-numerals"] {
-  --serif: ui-monospace, 'SF Mono', 'IBM Plex Mono', Menlo, monospace;
+html[data-font="classic-serif"] {
+  --serif: 'Source Serif 4', ui-serif, Georgia, serif;
+  --sans: 'Source Serif 4', ui-serif, Georgia, serif;
+}
+
+html[data-font="grotesk"] {
+  --serif: 'Space Grotesk', -apple-system, sans-serif;
+  --sans: 'Space Grotesk', -apple-system, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -595,13 +608,13 @@ header {
   user-select: all;
 }
 
-#manage-mint-row { display: flex; gap: 0.4rem; }
-#manage-mint-row input { flex: 1; }
+#manage-mint-row { display: flex; gap: 0.4rem; align-items: flex-start; }
+#manage-mint-row .password-field { flex: 1; min-width: 0; }
 
 .token-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.5rem 0;
   border-top: 1px solid var(--line);
@@ -609,9 +622,17 @@ header {
 }
 .token-row:first-of-type { border-top: none; }
 .token-row.revoked { color: var(--muted); }
-.token-row.revoked .numeric { text-decoration: line-through; }
-.token-row button { font-size: 0.68rem; padding: 0.25rem 0.55rem; border-color: var(--signal); color: var(--signal); }
-.token-uses { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+.token-row button {
+  font-size: 0.68rem;
+  padding: 0.25rem 0.55rem;
+  border-color: var(--signal);
+  color: var(--signal);
+  flex-shrink: 0;
+}
+.token-row-info { min-width: 0; flex: 1; }
+.token-uses { font-size: 0.7rem; color: var(--muted); margin-top: 0.3rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.token-use-line .numeric { color: var(--ink); }
+.token-row.revoked .token-use-line .numeric { color: var(--muted); }
 
 /* ---- Settings ---- */
 #settings-view {
