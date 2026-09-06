@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Service — Paranoid Chat</title>
+<script>
+  (function () {
+    try {
+      var theme = localStorage.getItem("theme");
+      var font = localStorage.getItem("font");
+      if (theme && theme !== "default") document.documentElement.setAttribute("data-theme", theme);
+      if (font && font !== "default") document.documentElement.setAttribute("data-font", font);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="legal-view">
+    <h1>Terms of Service</h1>
+    <p class="hint">Last updated: this document describes the current build of Paranoid Chat. It is written to reflect what the service actually does, not a generic template.</p>
+
+    <h2>Acceptance</h2>
+    <p>By using Paranoid Chat, you agree to these terms and to the accompanying Privacy Policy. If you do not agree, do not use the service.</p>
+
+    <h2>This is a personal project</h2>
+    <p>Paranoid Chat is built and operated by an individual developer, not a company. It is provided as-is, without uptime guarantees, without a service-level agreement, and without warranty of any kind, express or implied. Features described as available may change, be removed, or be temporarily broken without notice.</p>
+
+    <h2>Account responsibilities</h2>
+    <p>You are responsible for the security of your account credentials. There is no password recovery mechanism — if you lose your password, your account cannot be restored. You are responsible for anything sent from your account.</p>
+
+    <h2>Room passwords and owner keys are your responsibility</h2>
+    <p>If a room's password or an end-to-end-encrypted room's owner key is disclosed to someone you didn't intend, that is not a failure of the service — it is the nature of a shared secret. Treat these the same way you would treat any password: as something only you and people you trust should know.</p>
+
+    <h2>Acceptable use</h2>
+    <p>You may not use this service to: violate any applicable law; harass, threaten, or abuse others; distribute malware or attempt to compromise the service's infrastructure; attempt to bypass rate limits, access controls, or room authorization mechanisms; or impersonate another person or entity. Accounts found violating these terms may be suspended or deleted without notice.</p>
+
+    <h2>The app password and room-creation gates</h2>
+    <p>Certain actions (account creation, and creation of any room type) require a shared app password in addition to your account credentials. This exists to limit abuse of a service run by one person with limited capacity to moderate it. The app password is not a guarantee of any particular level of trust between users who know it.</p>
+
+    <h2>No guarantee of message delivery or retention</h2>
+    <p>Ephemeral and end-to-end-encrypted rooms are designed to not retain message history on the server. If you need a durable record of a conversation, that is your responsibility to keep on your own device — the service will not have a copy to recover for you.</p>
+
+    <h2>Automatic deletion</h2>
+    <p>Accounts inactive for 90 consecutive days are automatically deleted. Ephemeral rooms are automatically deleted 24 hours after creation. You will not receive advance notice before either happens.</p>
+
+    <h2>Limitation of liability</h2>
+    <p>To the fullest extent permitted by law, the developer of Paranoid Chat is not liable for any indirect, incidental, or consequential damages arising from your use of the service, including loss of data, loss of access, or disclosure of information you chose to share within a room.</p>
+
+    <h2>Changes to these terms</h2>
+    <p>If these terms change materially, you will be asked to review and re-accept them before continuing to use the service.</p>
+
+    <h2>Termination</h2>
+    <p>You may stop using the service and delete your account at any time. The developer may suspend or terminate access for any account violating these terms.</p>
+
+    <h2>Contact</h2>
+    <p>This is a personal project. Questions can be directed to the developer via the portfolio link in the app's settings.</p>
+
+    <p style="margin-top:2rem"><a href="/">&larr; Back to Paranoid Chat</a></p>
+  </div>
+</body>
+</html>
