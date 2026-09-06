@@ -142,6 +142,7 @@ const manageCurrentPasswordInput = document.getElementById('manage-current-passw
 const manageNewPasswordInput = document.getElementById('manage-new-password-input');
 const manageChangePasswordBtn = document.getElementById('manage-change-password-btn');
 const managePasswordError = document.getElementById('manage-password-error');
+const managePasswordSuccess = document.getElementById('manage-password-success');
 const manageE2eeKeySection = document.getElementById('manage-e2ee-key-section');
 const manageSecretInput = document.getElementById('manage-secret-input');
 const manageMintTokenBtn = document.getElementById('manage-mint-token-btn');
@@ -617,7 +618,14 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
     roomNameDisplay.textContent = `#${currentRoom.name}`;
     roomCodeDisplay.textContent = 'Copy code';
     roomTypeBadge.textContent = currentRoom.roomType;
-    addSystemMessage(`Connected to ${currentRoom.name || 'room'}`);
+    // NOT shown here — the "Connected to <name>" system message is shown
+    // once room-history arrives instead (see its handler below), since
+    // that's the first point this client actually KNOWS the room's real
+    // name when joining by a manually typed code (roomLabel is only ever
+    // non-empty on the create-room flow, which already knows its own
+    // room's name from the create response). Showing it here, before
+    // room-history arrives, was exactly what produced "Connected to
+    // room" (empty name) on every manual join.
   };
 
   ws.onmessage = (event) => {
@@ -699,7 +707,20 @@ function handleMessage(data) {
         currentRoom.roomType = data.roomType || currentRoom.roomType;
         roomTypeBadge.textContent = currentRoom.roomType;
         manageRoomBtn.style.display = (currentRoom.isOwner && currentRoom.roomType !== 'ephemeral') ? 'inline-block' : 'none';
+        // Authoritative room name from the server — fixes "Connected to
+        // room" (empty name) when joining by manually typed room code,
+        // which never had a name to pass into connectWebSocket the way
+        // the create-room flow does (that flow already knows the name
+        // from its own create response). Only overwrite if the server
+        // actually sent a non-empty name — keeps the create-flow's
+        // already-correct name intact if this ever arrived blank for any
+        // reason, rather than blanking out a name we already had right.
+        if (data.roomName) {
+          currentRoom.name = data.roomName;
+          roomNameDisplay.textContent = `#${currentRoom.name}`;
+        }
       }
+      addSystemMessage(`Connected to ${currentRoom && currentRoom.name ? currentRoom.name : 'room'}`);
       // participantCount is authoritative (computed server-side from the
       // Durable Object's actual connected-socket count, AFTER this
       // client's own socket was accepted) — set it directly rather than
@@ -1426,6 +1447,7 @@ function openManageRoom() {
   chatView.style.display = 'none';
   manageRoomView.style.display = 'flex';
   managePasswordError.textContent = '';
+  managePasswordSuccess.textContent = '';
   manageTokensError.textContent = '';
   manageNewTokenBox.style.display = 'none';
   manageCurrentPasswordInput.value = '';
@@ -1449,6 +1471,7 @@ manageRoomCodeCopyBtn.addEventListener('click', () => {
 
 manageChangePasswordBtn.addEventListener('click', async () => {
   managePasswordError.textContent = '';
+  managePasswordSuccess.textContent = '';
   const currentPassword = manageCurrentPasswordInput.value;
   const newPassword = manageNewPasswordInput.value;
   if (!currentPassword || !newPassword || newPassword.length < 4) {
@@ -1471,11 +1494,16 @@ manageChangePasswordBtn.addEventListener('click', async () => {
       managePasswordError.textContent = data.error || 'Failed to change password';
       return;
     }
-    // Success kicks everyone (including this owner) via close code 4002,
-    // which ws.onclose already handles by returning to the room view with
-    // an explanatory message — nothing further to do here.
+    // Everyone ELSE currently connected gets disconnected via close code
+    // 4002 (handled by ws.onclose) and must rejoin with the new password
+    // — but the owner's own connection is now deliberately spared (see
+    // the backend's kickAll excludeAccountId), since they already know
+    // the new password and kicking them too would just be friction. That
+    // means THIS client needs its own explicit success confirmation
+    // instead of relying on the disconnect flow to communicate it.
     manageCurrentPasswordInput.value = '';
     manageNewPasswordInput.value = '';
+    managePasswordSuccess.textContent = 'Password changed. Other participants have been disconnected and must rejoin with the new password.';
   } catch (err) {
     managePasswordError.textContent = 'Network error';
   } finally {
