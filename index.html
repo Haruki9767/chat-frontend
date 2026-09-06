@@ -5,14 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paranoid Chat</title>
 <script>
- 
   (function () {
     try {
       var theme = localStorage.getItem('theme');
       var font = localStorage.getItem('font');
       if (theme && theme !== 'default') document.documentElement.setAttribute('data-theme', theme);
       if (font && font !== 'default') document.documentElement.setAttribute('data-font', font);
-    } catch (e) { /* localStorage unavailable — fall back to default appearance */ }
+    } catch (e) { }
   })();
 </script>
 <link rel="stylesheet" href="style.css">
@@ -20,12 +19,6 @@
 </head>
 <body>
 
-  <!-- Consent gate: blocks all use of the service until the person has
-       explicitly accepted the current Privacy Policy and Terms of
-       Service. See script.js's checkConsent()/CONSENT_VERSION for the
-       versioning mechanics — bumping CONSENT_VERSION re-prompts everyone,
-       since agreeing to an old version of these documents doesn't carry
-       forward to a materially changed one. -->
   <div id="consent-gate" style="display:none">
     <h1>Before you continue</h1>
     <p class="hint">Paranoid Chat requires you to read and accept the following before using the service.</p>
@@ -80,10 +73,6 @@
       <button id="mode-create-btn" type="button">Create</button>
     </div>
 
-    <!-- Join panel: works for all room types. A join token substitutes for
-         the room password entirely on password rooms; on e2ee rooms it adds
-         nothing beyond what already knowing the room code grants, per the
-         Phase 7 design — the fields just don't need to change based on type. -->
     <div id="join-panel">
       <input id="room-code-input" type="text" placeholder="Room code" autocomplete="off" spellcheck="false">
       <div class="password-field">
@@ -94,8 +83,6 @@
       <button id="join-btn" class="primary">Join Room</button>
     </div>
 
-    <!-- Create panel: room-type selector first, since it changes which
-         fields are relevant/required below. -->
     <div id="create-panel" style="display:none">
       <div id="room-type-toggle">
         <button id="type-password-btn" class="mode-active" type="button">Password Room</button>
@@ -110,9 +97,6 @@
         <button type="button" class="password-toggle" data-for="new-room-password-input" aria-label="Show password"></button>
       </div>
 
-      <!-- Only shown for ephemeral/e2ee — the app password is re-verified
-           here, at the moment of creating one of these two room types
-           specifically, not at login/register (see backend Phase 3). -->
       <div id="gated-room-password-wrap" style="display:none">
         <div class="password-field">
           <input id="gated-room-app-password-input" type="password" placeholder="App password (required for this room type)">
@@ -126,10 +110,6 @@
     <div id="room-error"></div>
   </div>
 
-  <!-- Shown once, immediately after creating an e2ee room: the owner key.
-       This is the ONLY time it's ever shown — the server never stores or
-       returns it in plaintext again. Closing this without saving it means
-       it's gone for good, same as losing a room password. -->
   <div id="owner-key-modal" style="display:none">
     <div id="owner-key-box">
       <h2>Save this owner key</h2>
@@ -170,11 +150,6 @@
     </div>
   </div>
 
-  <!-- Owner-only room management panel: change room password, mint/revoke
-       join tokens, see who joined via which token. Only ever shown when
-       the current session is the room's owner (server-confirmed via
-       X-Is-Owner on join — see script.js) and only for password/e2ee rooms
-       (ephemeral rooms have no owner-managed tokens, per backend Phase 7). -->
   <div id="manage-room-view" style="display:none">
     <header>
       <span>Manage room</span>
@@ -251,7 +226,7 @@
         <input type="checkbox" id="typing-indicator-toggle" style="width:auto">
         <span>Show and share typing indicators</span>
       </label>
-      <p class="hint">When off, you won't see when others are typing, and others won't see when you are \u2014 nothing is sent from your device either way.</p>
+      <p class="hint">When off, you won't see when others are typing, and others won't see when you are &mdash; nothing is sent from your device either way.</p>
     </section>
 
     <section>
