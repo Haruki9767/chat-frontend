@@ -87,7 +87,7 @@
       <div id="room-type-toggle">
         <button id="type-password-btn" class="mode-active" type="button">Password Room</button>
         <button id="type-ephemeral-btn" type="button">Ephemeral (24h)</button>
-        <button id="type-e2ee-btn" type="button">E2EE</button>
+        <button id="type-e2ee-btn" type="button" disabled title="E2EE rooms are in development">E2EE (in development)</button>
       </div>
       <p id="room-type-hint" class="hint"></p>
 
@@ -113,7 +113,7 @@
   <div id="owner-key-modal" style="display:none">
     <div id="owner-key-box">
       <h2>Save this owner key</h2>
-      <p class="hint">This e2ee room has no room password. This key is the only way to mint join-invite tokens for it later. It is shown <strong>once</strong> and cannot be recovered if lost.</p>
+      <p class="hint">E2EE rooms are still in development and cannot be created yet.</p>
       <div id="owner-key-value"></div>
       <button id="owner-key-copy-btn" type="button">Copy</button>
       <button id="owner-key-close-btn" type="button">I've saved it — continue</button>

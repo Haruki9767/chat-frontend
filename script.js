@@ -357,7 +357,7 @@ function setRoomMode(m) {
 let createRoomType = 'password';
 typePasswordBtn.addEventListener('click', () => setCreateRoomType('password'));
 typeEphemeralBtn.addEventListener('click', () => setCreateRoomType('ephemeral'));
-typeE2eeBtn.addEventListener('click', () => setCreateRoomType('e2ee'));
+// E2EE room creation is intentionally disabled until the client protocol is complete.
 
 const ROOM_TYPE_HINTS = {
   password: 'A standard room, protected by the password you set below. Requires the app password to create.',
@@ -403,7 +403,11 @@ async function createAndJoin() {
     endpoint = '/api/rooms';
     bodyFields = { name: roomName, roomPassword };
   } else {
-    endpoint = createRoomType === 'ephemeral' ? '/api/rooms/ephemeral' : '/api/rooms/e2ee';
+    if (createRoomType !== 'ephemeral') {
+      roomError.textContent = 'E2EE rooms are in development and cannot be created yet';
+      return;
+    }
+    endpoint = '/api/rooms/ephemeral';
     bodyFields = { name: roomName };
   }
 
