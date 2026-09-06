@@ -7,35 +7,19 @@ const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
-let intentionalClose = false; // set right before we call ws.close() ourselves, so onclose can tell a deliberate leave apart from a real disconnect/failure
-let account = null; // { accountId, username, displayTag, color }
+let intentionalClose = false;
+let account = null;
 let sessionToken = localStorage.getItem('sessionToken') || null;
 
-// Current room's info, populated once join succeeds — needed by the
-// "Manage" panel (owner-only actions) and to label the chat header
-// correctly per room type.
-let currentRoom = null; // { roomCode, name, roomType, isOwner }
-// Usernames (the "username#tag" form, matching what messages/mentions
-// use) currently known to be in the room — used ONLY for @mention
-// highlighting, so a mention of someone who never actually joined stays
-// plain text instead of being misleadingly highlighted. Best-effort for
-// history replay (a name from an old message might have since left), but
-// authoritative for anyone who joins/leaves while this client is
-// connected.
+let currentRoom = null;
 let roomParticipants = new Set();
-// Typing indicator state: userId -> { username, timer } for everyone
-// OTHER than this client currently signaling isTyping. The timer is a
-// client-side safety net (auto-expire ~4s after the last signal) in case
-// a false event is ever dropped — e.g. a tab closing without a clean
-// disconnect — so an indicator can never get stuck on forever.
 let typingUsers = new Map();
-let myTypingTimer = null; // debounce for THIS client's own outgoing typing signal
+let myTypingTimer = null;
 
 const consentGate = document.getElementById('consent-gate');
 const consentCheckbox = document.getElementById('consent-checkbox');
 const consentAcceptBtn = document.getElementById('consent-accept-btn');
 
-// ---- Settings ----
 const settingsBtn = document.getElementById('settings-btn');
 const settingsView = document.getElementById('settings-view');
 const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -51,7 +35,6 @@ const chatView = document.getElementById('chat-view');
 const manageRoomView = document.getElementById('manage-room-view');
 const ownerKeyModal = document.getElementById('owner-key-modal');
 
-// ---- Auth ----
 const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
@@ -66,7 +49,6 @@ const accountDisplay = document.getElementById('account-display');
 const logoutBtn = document.getElementById('logout-btn');
 const deleteAccountBtn = document.getElementById('delete-account-btn');
 
-// ---- Room join/create ----
 const modeJoinBtn = document.getElementById('mode-join-btn');
 const modeCreateBtn = document.getElementById('mode-create-btn');
 const joinPanel = document.getElementById('join-panel');
@@ -87,12 +69,10 @@ const gatedRoomAppPasswordInput = document.getElementById('gated-room-app-passwo
 const createBtn = document.getElementById('create-btn');
 const roomError = document.getElementById('room-error');
 
-// ---- Owner key modal (shown once, at e2ee room creation) ----
 const ownerKeyValue = document.getElementById('owner-key-value');
 const ownerKeyCopyBtn = document.getElementById('owner-key-copy-btn');
 const ownerKeyCloseBtn = document.getElementById('owner-key-close-btn');
 
-// ---- Chat ----
 const leaveBtn = document.getElementById('leave-btn');
 const manageRoomBtn = document.getElementById('manage-room-btn');
 const roomNameDisplay = document.getElementById('room-name-display');
@@ -106,7 +86,6 @@ const replyPreview = document.getElementById('reply-preview');
 const replyPreviewText = document.getElementById('reply-preview-text');
 const replyCancelBtn = document.getElementById('reply-cancel-btn');
 
-// ---- Manage room panel ----
 const manageCloseBtn = document.getElementById('manage-close-btn');
 const manageRoomCodeValue = document.getElementById('manage-room-code-value');
 const manageRoomCodeCopyBtn = document.getElementById('manage-room-code-copy-btn');
@@ -124,11 +103,8 @@ const manageNewTokenValue = document.getElementById('manage-new-token-value');
 const manageTokensList = document.getElementById('manage-tokens-list');
 const manageTokensError = document.getElementById('manage-tokens-error');
 
-let replyingTo = null; // { id, username, snippet }
+let replyingTo = null;
 
-// ---- Deterministic color, mirrors the server's algorithm, used so
-// history-replayed messages (which don't carry a color from D1) still
-// render in the correct consistent color per user. ----
 const USER_COLORS = [
   '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
   '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
@@ -143,10 +119,6 @@ function colorForUserId(userId) {
   return USER_COLORS[hash % USER_COLORS.length];
 }
 
-// Reads the hCaptcha widget's current response token. Returns '' if the
-// widget hasn't rendered (e.g. HCAPTCHA_SITE_KEY is blank) or hasn't been
-// solved yet — the backend will correctly reject an empty token rather
-// than this needing its own client-side validation.
 function getHcaptchaToken() {
   if (typeof hcaptcha === 'undefined') return '';
   try {
@@ -160,16 +132,6 @@ function resetHcaptcha() {
   try { hcaptcha.reset(); } catch {}
 }
 
-// Calls the hCaptcha verification Worker DIRECTLY from the browser (a
-// real cross-origin request the Worker's own CORS layer is built to
-// accept — no manual Origin header needed here, the browser sets one
-// automatically and truthfully, unlike the abandoned server-to-server
-// approach). Returns true only on an explicit { ok: true } — every other
-// outcome (network failure, non-200, malformed body, explicit
-// { ok: false }) is treated as "not verified." This is now the ONLY
-// verification that happens anywhere in this app — see the note by
-// HCAPTCHA_VERIFY_URL above for why the chat backend no longer
-// independently re-checks it.
 async function verifyHcaptchaClientSide(token) {
   if (!token) return false;
   try {
@@ -187,13 +149,6 @@ async function verifyHcaptchaClientSide(token) {
   }
 }
 
-// The hCaptcha script auto-renders any element with class="h-captcha" and
-// a data-sitekey attribute the moment it loads, so data-sitekey has to be
-// set on the container BEFORE that script runs — done here, at the top
-// of this file, rather than waiting for a DOMContentLoaded-style event,
-// since api.js is loaded with defer (runs after the DOM is parsed but the
-// exact ordering relative to this script depends on load timing either
-// way — setting the attribute as early as possible is the safe choice).
 (function initHcaptchaWidget() {
   const el = document.getElementById('auth-hcaptcha');
   const warning = document.getElementById('auth-hcaptcha-missing-warning');
@@ -205,7 +160,6 @@ async function verifyHcaptchaClientSide(token) {
   if (el) el.setAttribute('data-sitekey', HCAPTCHA_SITE_KEY);
 })();
 
-// ---- Auth mode toggle ----
 let authMode = 'login';
 authLoginBtn.addEventListener('click', () => setAuthMode('login'));
 authRegisterBtn.addEventListener('click', () => setAuthMode('register'));
@@ -225,8 +179,6 @@ function setAuthMode(m) {
     authLoginBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Sign Up';
     authHint.textContent = 'Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
-    // The app password gates account creation (registration) but not
-    // login — a returning account holder isn't creating anything new.
     authAppPasswordWrap.style.display = 'block';
   }
 }
@@ -242,9 +194,6 @@ authSubmitBtn.addEventListener('click', async () => {
     return;
   }
 
-  // App password gates account CREATION (registration) specifically —
-  // not login, since a returning account holder isn't creating anything
-  // new. Matches the same requirement now on every room-creation route.
   let appPassword = '';
   if (authMode === 'register') {
     appPassword = authAppPasswordInput.value;
@@ -264,10 +213,6 @@ authSubmitBtn.addEventListener('click', async () => {
   authSubmitBtn.disabled = true;
   setButtonLoading(authSubmitBtn, true);
 
-  // Verified directly against the hCaptcha verification Worker, in the
-  // browser, BEFORE ever calling the chat backend — see
-  // verifyHcaptchaClientSide's notes for why this replaced a
-  // server-to-server check.
   const verified = await verifyHcaptchaClientSide(hcaptchaToken);
   if (!verified) {
     authError.textContent = 'hCaptcha verification failed \u2014 please try again';
@@ -386,7 +331,6 @@ function showRoomView() {
   setRoomMode('join');
 }
 
-// ---- Room join/create mode ----
 let roomMode = 'join';
 modeJoinBtn.addEventListener('click', () => setRoomMode('join'));
 modeCreateBtn.addEventListener('click', () => setRoomMode('create'));
@@ -410,7 +354,6 @@ function setRoomMode(m) {
   }
 }
 
-// ---- Room type selector (create panel) ----
 let createRoomType = 'password';
 typePasswordBtn.addEventListener('click', () => setCreateRoomType('password'));
 typeEphemeralBtn.addEventListener('click', () => setCreateRoomType('ephemeral'));
@@ -430,11 +373,10 @@ function setCreateRoomType(t) {
   roomTypeHint.textContent = ROOM_TYPE_HINTS[t];
 
   const needsRoomPassword = t === 'password';
-  newRoomPasswordInput.style.display = needsRoomPassword ? 'block' : 'none';
+  const newRoomPasswordField = newRoomPasswordInput.closest('.password-field');
+  newRoomPasswordField.style.display = needsRoomPassword ? 'block' : 'none';
   newRoomPasswordInput.value = '';
 
-  // The app password is now required to create ANY room type, not just
-  // ephemeral/e2ee — always shown.
   gatedRoomPasswordWrap.style.display = 'block';
   gatedRoomAppPasswordInput.value = '';
 }
@@ -443,9 +385,6 @@ async function createAndJoin() {
   roomError.textContent = '';
   const roomName = roomNameInput.value.trim() || undefined;
 
-  // App password is now required for every room type — checked once,
-  // outside the per-type branch below (previously only ephemeral/e2ee
-  // required it; password rooms now do too).
   const appPassword = gatedRoomAppPasswordInput.value;
   if (!appPassword) {
     roomError.textContent = 'App password required';
@@ -499,9 +438,6 @@ async function createAndJoin() {
       return;
     }
 
-    // e2ee rooms return a one-time owner key that is NEVER shown again —
-    // block on the modal before connecting, so it can't be missed by a
-    // fast auto-connect flashing past it.
     if (createRoomType === 'e2ee' && data.ownerKey) {
       showOwnerKeyModal(data.ownerKey, () => {
         connectWebSocket({
@@ -571,18 +507,11 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
   if (roomPassword) params.set('roomPassword', roomPassword);
   if (joinToken) params.set('joinToken', joinToken);
 
-  // Map http(s) -> ws(s) by scheme, not by blindly forcing wss:// — a
-  // local http:// dev backend needs a plain ws:// connection, since it
-  // has no TLS to upgrade to.
   const wsUrl = API_URL.replace(/^http/, 'ws') + `/api/rooms/${roomCode}/join?${params.toString()}`;
 
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    // Clears whichever of Join/Create triggered this connection — only
-    // one is ever actually mid-loading at a time, resetting both
-    // unconditionally is harmless and avoids needing to track which one
-    // initiated this particular connectWebSocket call.
     resetJoinBtn();
     resetCreateBtn();
     currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
@@ -591,14 +520,6 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
     roomNameDisplay.textContent = `#${currentRoom.name}`;
     roomCodeDisplay.textContent = 'Copy code';
     roomTypeBadge.textContent = currentRoom.roomType;
-    // NOT shown here — the "Connected to <name>" system message is shown
-    // once room-history arrives instead (see its handler below), since
-    // that's the first point this client actually KNOWS the room's real
-    // name when joining by a manually typed code (roomLabel is only ever
-    // non-empty on the create-room flow, which already knows its own
-    // room's name from the create response). Showing it here, before
-    // room-history arrives, was exactly what produced "Connected to
-    // room" (empty name) on every manual join.
   };
 
   ws.onmessage = (event) => {
@@ -610,8 +531,6 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
   };
 
   ws.onclose = (event) => {
-    // 4001: this account was just deleted (see ChatRoom.kickAccount) —
-    // log out entirely, not just disconnect from the room.
     if (event.code === 4001) {
       ws = null;
       localStorage.removeItem('sessionToken');
@@ -623,9 +542,6 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
       return;
     }
 
-    // 4002: the room's password was just changed by its owner — everyone
-    // gets disconnected and needs to rejoin with the new password. 4003:
-    // an ephemeral room hit its 24h expiry.
     if (event.code === 4002 || event.code === 4003) {
       ws = null;
       chatView.style.display = 'none';
@@ -666,48 +582,20 @@ function handleMessage(data) {
       addMessage(data.id, data.userId, data.username, data.message, false, data.timestamp, data.color, data.replyTo);
       break;
     case 'room-history':
-      // Now carries isOwner (whether THIS session is the room's owner),
-      // roomType, and participantCount alongside history — see
-      // chat-room.js's fetch() handler for why this piggybacks on
-      // room-history rather than being a separate message type. isOwner
-      // drives whether the "Manage" button is shown at all; it's purely
-      // a UI convenience — every actual owner-gated action re-checks
-      // ownership server-side independently (see requireRoomOwner in
-      // index.js), so nothing security-relevant depends on the client
-      // believing this flag.
       if (currentRoom) {
         currentRoom.isOwner = !!data.isOwner;
         currentRoom.roomType = data.roomType || currentRoom.roomType;
         roomTypeBadge.textContent = currentRoom.roomType;
         manageRoomBtn.style.display = (currentRoom.isOwner && currentRoom.roomType !== 'ephemeral') ? 'inline-block' : 'none';
-        // Authoritative room name from the server — fixes "Connected to
-        // room" (empty name) when joining by manually typed room code,
-        // which never had a name to pass into connectWebSocket the way
-        // the create-room flow does (that flow already knows the name
-        // from its own create response). Only overwrite if the server
-        // actually sent a non-empty name — keeps the create-flow's
-        // already-correct name intact if this ever arrived blank for any
-        // reason, rather than blanking out a name we already had right.
         if (data.roomName) {
           currentRoom.name = data.roomName;
           roomNameDisplay.textContent = `#${currentRoom.name}`;
         }
       }
       addSystemMessage(`Connected to ${currentRoom && currentRoom.name ? currentRoom.name : 'room'}`);
-      // participantCount is authoritative (computed server-side from the
-      // Durable Object's actual connected-socket count, AFTER this
-      // client's own socket was accepted) — set it directly rather than
-      // ever doing local +1/-1 arithmetic from a hardcoded starting
-      // point. That old approach undercounted every room this client
-      // didn't personally watch every join/leave event for, including
-      // itself: a hardcoded "0 users" baseline never learned about its
-      // OWN connection, only other people's subsequent events.
       if (typeof data.participantCount === 'number') {
         userCount.textContent = `${data.participantCount} users`;
       }
-      // Best-effort seed of roomParticipants from history authors — see
-      // the declaration comment above for why this is approximate, not
-      // authoritative (a historical sender may have since left).
       data.messages.forEach(msg => {
         if (msg.username) roomParticipants.add(msg.username);
       });
@@ -723,9 +611,6 @@ function handleMessage(data) {
     case 'user-joined':
       addSystemMessage(`${data.username} joined`);
       roomParticipants.add(data.username);
-      // Same authoritative-count approach as room-history above — trust
-      // the server's count rather than incrementing a local one, which
-      // stays correct even if this client ever missed a prior event.
       if (typeof data.participantCount === 'number') {
         userCount.textContent = `${data.participantCount} users`;
       }
@@ -741,12 +626,6 @@ function handleMessage(data) {
     case 'typing':
       handleTypingEvent(data);
       break;
-    // e2ee handshake/message types (Phase 5) are relayed by the server
-    // but this build doesn't yet implement client-side key generation or
-    // encrypt/decrypt — see the TODO block below handleMessage. Until
-    // that lands, e2ee rooms will connect and show history/join events
-    // normally, but sent "messages" won't actually be end-to-end
-    // encrypted content yet.
     case 'e2ee-public-key':
     case 'e2ee-existing-keys':
     case 'e2ee-message':
@@ -761,38 +640,7 @@ function handleMessage(data) {
   }
 }
 
-// TODO(e2ee crypto): this build wires the e2ee room TYPE end to end
-// (creation, owner key, joining, the server-side pairwise relay) but does
-// NOT yet implement the actual client-side cryptography — WebCrypto
-// keypair generation/storage, the e2ee-public-key handshake, or
-// encrypting/decrypting e2ee-message payloads. sendMessage() below
-// currently sends plain chat-message for every room type, which the
-// backend will correctly REJECT for e2ee rooms (see chat-room.js's
-// explicit guard against plaintext chat-message in e2ee rooms) — so e2ee
-// rooms are joinable and show presence/history correctly, but sending an
-// actual message in one will currently fail with a server error until
-// this TODO is implemented.
-
-// ==================== Markdown + @mentions (constrained, safe subset) ====================
-// Deliberately narrow: **bold**, *italic*, `inline code`, ```code
-// blocks```, and auto-linked bare URLs. No headers/images/tables/lists —
-// those don't fit a chat bubble and only expand the surface for a
-// rendering mistake to matter. This function receives text that has
-// ALREADY been through escapeHtml() — every regex below only ever
-// constructs SPECIFIC, hardcoded tags (<strong>, <em>, <code>, <pre>,
-// <a>, <span class="mention">) around already-safe escaped content. It
-// never re-parses or trusts anything resembling raw HTML from the
-// message itself, so there is no injection path through this function.
-//
-// roomParticipants is the CURRENT room's actual connected members (from
-// presence events), not a static list — a message that mentions someone
-// who was never really in the room is deliberately left as plain text,
-// since highlighting a false match would be misleading, not helpful.
 function renderMessageBody(escapedText, roomParticipants) {
-  // Step 1: pull out fenced code blocks and inline code FIRST, replacing
-  // each with a placeholder token, so none of the later markdown/mention/
-  // URL rules can accidentally reach inside code content (e.g. an
-  // asterisk inside a code span must never become <em>).
   const codeBlocks = [];
   let text = escapedText.replace(/```([\s\S]*?)```/g, (_, code) => {
     codeBlocks.push(`<pre><code>${code}</code></pre>`);
@@ -803,31 +651,13 @@ function renderMessageBody(escapedText, roomParticipants) {
     return `\u0000CODEBLOCK${codeBlocks.length - 1}\u0000`;
   });
 
-  // Step 2: bold before italic — **x** must resolve fully before a
-  // single-asterisk rule gets a chance to misparse it. The bold pattern
-  // matches non-greedily up to the closing ** and allows any content in
-  // between (including a nested *italic* span) — an earlier, stricter
-  // version ([^\n*]+) failed on "**bold *italic* still bold**" because it
-  // couldn't match across the inner asterisks, letting the italic rule
-  // wrongly fire first and garble the result. Verified against that exact
-  // case, plus the simple/no-nesting cases, before shipping this version.
   text = text.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
   text = text.replace(/\*([^\n*]+)\*/g, '<em>$1</em>');
 
-  // Step 3: auto-link bare URLs. Escaped text means a literal "&" in a
-  // URL already reads as "&amp;" at this point — matched as part of the
-  // URL body so links with query strings still work, and rel/target are
-  // hardcoded (never derived from the message) to prevent any tab-nabbing
-  // trick via a crafted URL scheme beyond http(s).
   text = text.replace(/\bhttps?:\/\/[^\s<]+[^\s<.,:;!?)\]]/g, (url) => {
     return `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`;
   });
 
-  // Step 4: @mentions — ONLY matched against actual current room
-  // participants (passed in), never a bare @word pattern. Longer names
-  // are checked before shorter ones sharing a prefix (sorted by length
-  // descending) so "@al" doesn't shadow a match for "@alex" typed first
-  // in the regex alternation.
   if (roomParticipants && roomParticipants.length > 0) {
     const escapedNames = roomParticipants
       .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -836,8 +666,6 @@ function renderMessageBody(escapedText, roomParticipants) {
     text = text.replace(mentionRe, '<span class="mention">@$1</span>');
   }
 
-  // Step 5: restore code blocks/spans last, after everything else has
-  // already run — their content was never exposed to steps 2-4 at all.
   text = text.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_, i) => codeBlocks[Number(i)]);
 
   return text;
@@ -849,17 +677,10 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ==================== Timestamp grouping state ====================
-// Tracks the previous rendered (non-system) message's timestamp/sender,
-// so addMessage can decide whether to insert a day/gap divider and
-// whether to show this message's own inline timestamp or suppress it as
-// part of a consecutive run from the same sender. Reset alongside
-// roomParticipants/typingUsers in leaveChat, so a newly joined room
-// starts its own grouping from scratch.
 let lastRenderedTimestamp = null;
 let lastRenderedSender = null;
-const TIME_DIVIDER_GAP_MS = 15 * 60 * 1000; // new divider after a 15-minute gap
-const SENDER_GROUP_GAP_MS = 2 * 60 * 1000; // show a fresh timestamp if 2+ minutes passed even from the same sender
+const TIME_DIVIDER_GAP_MS = 15 * 60 * 1000;
+const SENDER_GROUP_GAP_MS = 2 * 60 * 1000;
 
 function toMs(ts) {
   if (!ts) return Date.now();
@@ -891,7 +712,7 @@ function maybeInsertTimeDivider(timestamp) {
     divider.className = 'time-divider';
     divider.textContent = formatDividerLabel(ms);
     messageArea.appendChild(divider);
-    return true; // signals "this message starts a new visual group" to the caller
+    return true;
   }
   return false;
 }
@@ -905,10 +726,6 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
   const ms = toMs(timestamp);
   const startedNewGroup = maybeInsertTimeDivider(ms);
 
-  // Suppress the inline per-bubble timestamp for a quick consecutive run
-  // from the SAME sender — only show it when the sender changed, a
-  // divider was just inserted, or enough time passed even within one
-  // sender's run that a fresh timestamp is actually informative again.
   const sameSenderContinuation = !startedNewGroup && sender === lastRenderedSender &&
     lastRenderedTimestamp !== null && (ms - lastRenderedTimestamp) <= SENDER_GROUP_GAP_MS;
   const showTimestamp = !sameSenderContinuation;
@@ -930,12 +747,6 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
     ? `<div class="reply-quote">\u21aa ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
     : '';
 
-  // Rich rendering: escape first (always), THEN run the constrained
-  // markdown/mention transform on the already-safe result — see
-  // renderMessageBody's own notes on why this ordering is what makes it
-  // safe. Never skip escapeHtml() here even though the transform looks
-  // like it "renders HTML" — it only ever wraps already-escaped content
-  // in a fixed, hardcoded set of tags.
   const bodyHtml = renderMessageBody(escapeHtml(text), Array.from(roomParticipants));
 
   const senderLabel = isSelf ? 'You' : escapeHtml(sender);
@@ -947,18 +758,8 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
   div.classList.add(isSelf ? 'self' : 'other');
   div.innerHTML = `${senderHtml}${replyHtml}<div class="bubble">${bodyHtml}</div>`;
 
-  // Short tap/click = reply (existing behavior, unchanged). Long-press
-  // (touch) or right-click (desktop, via contextmenu) = copy the raw
-  // message text — see wireMessageCopyGestures below for why these are
-  // handled together as one function per bubble, applied identically
-  // regardless of which surface rendered it (self/other/reply-carrying).
   if (id) {
     div.addEventListener('click', () => {
-      // Defensive check independent of touchend's preventDefault (which
-      // has known cross-browser inconsistencies for suppressing the
-      // synthetic click after a touch sequence — see
-      // wireMessageCopyGestures' notes) — a long-press that just fired
-      // should never ALSO trigger a reply.
       if (div.dataset.longPress === 'true') {
         div.dataset.longPress = 'false';
         return;
@@ -974,15 +775,6 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
 
 const LONG_PRESS_MS = 500;
 
-// One shared wiring function for the long-press (touch) / right-click
-// (desktop) "copy this message" gesture, applied to every message bubble
-// regardless of sender. Deliberately kept independent of the existing
-// tap-to-reply click handler (registered separately on the same element)
-// rather than merged into one handler with branching — a timer-based
-// long-press naturally coexists with a plain click handler: a short tap
-// fires the click listener as it always did, a held tap fires this one
-// instead and suppresses the subsequent click via preventDefault on
-// touchend.
 function wireMessageCopyGestures(el, text) {
   let pressTimer = null;
 
@@ -1004,13 +796,6 @@ function wireMessageCopyGestures(el, text) {
   el.addEventListener('touchend', (e) => {
     cancelPress();
     if (el.dataset.longPress === 'true') {
-      // Belt-and-suspenders against the tap-to-reply click that would
-      // otherwise ALSO fire right after a long-press release: preventDefault
-      // here suppresses the browser's synthetic click on current Chrome
-      // Mobile/iOS Safari, but that specific behavior has a history of
-      // cross-browser inconsistency, so the reply click handler ALSO checks
-      // el.dataset.longPress itself (see the click listener above, in
-      // addMessage) rather than depending on preventDefault alone.
       e.preventDefault();
     }
   });
@@ -1042,22 +827,22 @@ function addSystemMessage(text) {
   messageArea.scrollTop = messageArea.scrollHeight;
 }
 
-const TYPING_DEBOUNCE_MS = 3000; // stop signaling "typing" after this long with no further input
-const TYPING_SEND_THROTTLE_MS = 2000; // minimum gap between outgoing "still typing" sends, so holding a key down doesn't flood the socket
+const TYPING_DEBOUNCE_MS = 3000;
+const TYPING_SEND_THROTTLE_MS = 2000;
 
 let lastTypingSentAt = 0;
 
 function sendTypingSignal(isTyping) {
-  if (!typingIndicatorsEnabled()) return; // full opt-out — see the settings toggle notes
+  if (!typingIndicatorsEnabled()) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  if (currentRoom && currentRoom.roomType === 'e2ee') return; // no chat-message support there yet either (see the e2ee TODO) — nothing meaningful to signal about
+  if (currentRoom && currentRoom.roomType === 'e2ee') return;
   ws.send(JSON.stringify({ type: 'typing', isTyping }));
 }
 
-const TYPING_EXPIRE_MS = 4000; // safety-net auto-clear if a "stopped typing" signal is ever dropped (e.g. tab closes uncleanly)
+const TYPING_EXPIRE_MS = 4000;
 
 function handleTypingEvent(data) {
-  if (!typingIndicatorsEnabled()) return; // full opt-out — never render others' signals either, matching the settings toggle notes
+  if (!typingIndicatorsEnabled()) return;
   if (!data.userId) return;
 
   clearTimeout((typingUsers.get(data.userId) || {}).timer);
@@ -1091,12 +876,8 @@ function renderTypingIndicator() {
   }
 }
 
-// ==================== @mention autocomplete ====================
-// Suggests only ACTUAL current room participants (see roomParticipants),
-// same restriction as renderMessageBody's highlighting — never an
-// arbitrary/freeform mention target.
 let mentionActiveIndex = -1;
-let mentionMatchStart = -1; // index into messageInput.value where the "@" of the current mention attempt starts
+let mentionMatchStart = -1;
 
 function handleMentionAutocomplete() {
   const value = messageInput.value;
@@ -1128,9 +909,6 @@ function handleMentionAutocomplete() {
     opt.className = 'mention-option' + (i === 0 ? ' active' : '');
     opt.textContent = name;
     opt.addEventListener('mousedown', (e) => {
-      // mousedown (not click) so this fires BEFORE the input loses focus,
-      // which would otherwise close the dropdown first and lose the
-      // selection.
       e.preventDefault();
       applyMentionSelection(name);
     });
@@ -1159,12 +937,6 @@ function applyMentionSelection(name) {
   messageInput.focus();
 }
 
-// Arrow-key navigation and Enter-to-select while the dropdown is open —
-// added as its own keydown listener (not merged into the existing Enter-
-// to-send one) so the two concerns stay easy to reason about separately;
-// the existing Enter-to-send handler already checks
-// mentionSuggestions.classList.contains('visible') and backs off when
-// this one should act instead.
 messageInput.addEventListener('keydown', (e) => {
   if (!mentionSuggestions.classList.contains('visible')) return;
   const options = mentionSuggestions.querySelectorAll('.mention-option');
@@ -1189,8 +961,6 @@ messageInput.addEventListener('keydown', (e) => {
   options.forEach((o, i) => o.classList.toggle('active', i === mentionActiveIndex));
 });
 
-
-
 messageInput.addEventListener('input', () => {
   handleMentionAutocomplete();
 
@@ -1208,20 +978,14 @@ messageInput.addEventListener('input', () => {
 
 sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keydown', (e) => {
-  // Only trigger on the actual Enter press, not the browser's repeat-fire
-  // while the key is held, and ignore IME composition Enters (e.g.
-  // confirming a suggestion on some mobile keyboards) — e.isComposing is
-  // the standard way to detect that. Without this, some mobile virtual
-  // keyboards were firing this handler in a way that, combined with the
-  // Send button's own click handler, sent the same message twice.
   if (e.key === 'Enter' && !e.repeat && !e.isComposing && !mentionSuggestions.classList.contains('visible')) {
     e.preventDefault();
     sendMessage();
   }
 });
 
-let sendInFlight = false; // guards against sending the same message twice from two rapid triggers on the same physical action — e.g. a double-tap on the Send button (confirmed cause), or Enter's keydown plus a near-simultaneous click landing together
-const SEND_DEBOUNCE_MS = 500; // long enough to absorb a real double-tap (typically 100-300ms apart), short enough that it never blocks two genuinely separate messages sent close together
+let sendInFlight = false;
+const SEND_DEBOUNCE_MS = 500;
 
 function sendMessage() {
   if (sendInFlight) return;
@@ -1233,8 +997,6 @@ function sendMessage() {
     return;
   }
   if (currentRoom && currentRoom.roomType === 'e2ee') {
-    // See the e2ee crypto TODO above handleMessage — sending here would
-    // just be rejected by the server as plaintext in an e2ee room.
     addSystemMessage('\u26a0 Sending in e2ee rooms isn\u2019t implemented in this build yet');
     return;
   }
@@ -1243,8 +1005,6 @@ function sendMessage() {
   sendBtn.disabled = true;
   setTimeout(() => { sendInFlight = false; sendBtn.disabled = false; }, SEND_DEBOUNCE_MS);
 
-  // Sending counts as "done typing" — stop the indicator immediately
-  // rather than waiting for the idle debounce to expire on its own.
   clearTimeout(myTypingTimer);
   myTypingTimer = null;
   sendTypingSignal(false);
@@ -1262,16 +1022,8 @@ function sendMessage() {
   hideMentionSuggestions();
 }
 
-
 leaveBtn.addEventListener('click', leaveChat);
 
-// Available to EVERYONE in the room, not just the owner — this is the
-// only way a non-owner (or anyone in an ephemeral room, which has no
-// Manage panel at all — see manageRoomBtn's visibility logic above) can
-// ever see/copy the room's full code. Labeled "Copy code" explicitly
-// (rather than showing a truncated hex string that looked like plain
-// text and wasn't discoverable as tappable — the original version of
-// this element failed exactly that way in practice).
 roomCodeDisplay.addEventListener('click', () => {
   if (!currentRoom) return;
   copyToClipboard(currentRoom.roomCode, roomCodeDisplay, 'Copy code');
@@ -1284,14 +1036,8 @@ function leaveChat() {
   roomView.style.display = 'flex';
   messageArea.innerHTML = '';
   userCount.textContent = '0 users';
-  // Reset explicitly rather than relying on chatView (its parent) being
-  // hidden to make this moot — the next room-history message will
-  // re-evaluate this correctly regardless, but leaving stale state lying
-  // around is fragile to reason about later.
   manageRoomBtn.style.display = 'none';
   currentRoom = null;
-  // Reset per-room state that would otherwise leak stale names/timers
-  // into whatever room is joined next.
   roomParticipants = new Set();
   typingUsers.forEach(u => clearTimeout(u.timer));
   typingUsers.clear();
@@ -1301,38 +1047,6 @@ function leaveChat() {
   resetCreateBtn();
 }
 
-// updateUserCount was removed — participant counts now come directly
-// from the server's authoritative participantCount field on room-history/
-// user-joined/user-left (see handleMessage above), never computed
-// client-side.
-
-// Copies text to the clipboard and only shows a success confirmation
-// once it's actually confirmed to have worked — the original version of
-// every copy button here fired-and-forgot the Clipboard API promise and
-// showed "Copied" unconditionally, which would have been a silent lie in
-// any environment where navigator.clipboard is unavailable or denied
-// (several Android WebView configurations fall into this category,
-// unlike a full mobile browser). Falls back to the older
-// document.execCommand('copy') approach — a hidden, temporary textarea
-// — which has much broader compatibility, including in WebViews that
-// don't expose the modern Clipboard API at all.
-// Copies text to the clipboard and only shows a success confirmation
-// once it's actually confirmed to have worked — the original version of
-// every copy button here fired-and-forgot the Clipboard API promise and
-// showed "Copied" unconditionally, which would have been a silent lie in
-// any environment where navigator.clipboard is unavailable or denied
-// (several Android WebView configurations fall into this category,
-// unlike a full mobile browser). Falls back to the older
-// document.execCommand('copy') approach — a hidden, temporary textarea
-// — which has much broader compatibility, including in WebViews that
-// don't expose the modern Clipboard API at all.
-//
-// Two feedback modes: pass a button + its reset label to relabel that
-// button temporarily (the original use case — owner-key/token/room-code
-// copy buttons that have a natural place to show "Copied"), or pass
-// useToast=true for a gesture with no dedicated button to relabel (the
-// long-press/right-click message-copy gesture) — shows the floating
-// #copy-toast instead.
 async function copyToClipboard(text, button, resetLabel, useToast) {
   let ok = false;
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1371,12 +1085,6 @@ async function copyToClipboard(text, button, resetLabel, useToast) {
   }
 }
 
-
-// Feature: loading states for any action with real network latency (join,
-// create, sign in, log in, etc.) — replaces a button's label with a
-// spinner + "Working..." text and disables it, so an action with a wait
-// never just sits there with no feedback. Restores the original label on
-// loading(false), so callers don't need to remember it themselves.
 const buttonOriginalLabels = new WeakMap();
 function setButtonLoading(button, loading, loadingText) {
   if (loading) {
@@ -1398,15 +1106,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ==================== Room management (owner-only) ====================
-// currentRoom.isOwner is set from the room-history message's isOwner
-// field (see handleMessage above), which the DO now includes based on
-// the X-Is-Owner header the Worker's join route sets. That flag is
-// purely a UI convenience for showing/hiding this button — every actual
-// owner-gated action (password change, minting/revoking join tokens)
-// independently re-checks ownership server-side via requireRoomOwner, so
-// nothing security-relevant depends on the client's copy of this flag
-// being honest.
 manageRoomBtn.addEventListener('click', () => {
   if (!currentRoom) return;
   openManageRoom();
@@ -1467,13 +1166,6 @@ manageChangePasswordBtn.addEventListener('click', async () => {
       managePasswordError.textContent = data.error || 'Failed to change password';
       return;
     }
-    // Everyone ELSE currently connected gets disconnected via close code
-    // 4002 (handled by ws.onclose) and must rejoin with the new password
-    // — but the owner's own connection is now deliberately spared (see
-    // the backend's kickAll excludeAccountId), since they already know
-    // the new password and kicking them too would just be friction. That
-    // means THIS client needs its own explicit success confirmation
-    // instead of relying on the disconnect flow to communicate it.
     manageCurrentPasswordInput.value = '';
     manageNewPasswordInput.value = '';
     managePasswordSuccess.textContent = 'Password changed. Other participants have been disconnected and must rejoin with the new password.';
@@ -1558,9 +1250,6 @@ function renderJoinTokens(tokens) {
     const created = new Date(t.createdAt * 1000).toLocaleDateString();
     info.innerHTML = `Token ${escapeHtml(t.tokenId.slice(0, 8))}\u2026 \u00b7 created ${created}${t.revokedAt ? ' \u00b7 revoked' : ''}`;
 
-    // Actual per-use attribution — WHO joined via this token, not just a
-    // count — this is the whole point of a per-token invite log; a bare
-    // count was never actually useful for that purpose.
     const usesList = document.createElement('div');
     usesList.className = 'token-uses';
     if (t.uses.length === 0) {
@@ -1610,7 +1299,6 @@ async function revokeJoinToken(tokenId) {
   }
 }
 
-// ==================== Settings: theme & font ====================
 const THEMES = [
   { id: 'default', label: 'Ledger Green' },
   { id: 'dusk', label: 'Dusk' },
@@ -1678,28 +1366,16 @@ settingsBtn.addEventListener('click', () => {
 
 settingsCloseBtn.addEventListener('click', () => {
   settingsView.style.display = 'none';
-  // Settings is reachable from the room list; returning to it is the
-  // correct default regardless of whether the person came from an active
-  // chat, since opening Settings itself always hid chatView above.
   roomView.style.display = 'flex';
 });
 
-// Full opt-out, not just muting the display: when off, this client
-// neither SENDS its own typing signal nor renders anyone else's. Not
-// sending your own signal is the more genuinely private default (matches
-// this app's whole "discretion" design world) — a person who wants
-// privacy from typing-presence shouldn't still be broadcasting it to
-// others just because they personally don't want to see it back.
 function typingIndicatorsEnabled() {
-  return localStorage.getItem('typingIndicatorsEnabled') !== 'false'; // default ON
+  return localStorage.getItem('typingIndicatorsEnabled') !== 'false';
 }
 
 typingIndicatorToggle.addEventListener('change', () => {
   localStorage.setItem('typingIndicatorsEnabled', typingIndicatorToggle.checked ? 'true' : 'false');
   if (!typingIndicatorToggle.checked) {
-    // Turning it off mid-room: stop showing what's already been received
-    // and tell the room we've stopped typing, in case a signal was
-    // mid-flight when the setting changed.
     typingUsers.forEach(u => clearTimeout(u.timer));
     typingUsers.clear();
     renderTypingIndicator();
@@ -1707,11 +1383,6 @@ typingIndicatorToggle.addEventListener('change', () => {
   }
 });
 
-// ==================== Password visibility toggles ====================
-// One generic wiring pass over every .password-toggle button, rather than
-// a separate handler per field (there are 8 password inputs across auth,
-// join/create, and room management) — each toggle's data-for attribute
-// names the input it controls.
 const EYE_OPEN_SVG = '<svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_CLOSED_SVG = '<svg class="icon" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.2A11 11 0 0 1 12 5c7 0 11 7 11 7a13.4 13.4 0 0 1-3.4 4.1M6.7 6.7C3.4 8.9 1 12 1 12s4 7 11 7a10.6 10.6 0 0 0 5.3-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 
@@ -1727,7 +1398,6 @@ document.querySelectorAll('.password-toggle').forEach(btn => {
   });
 });
 
-// ==================== Consent gate ====================
 consentCheckbox.addEventListener('change', () => {
   consentAcceptBtn.disabled = !consentCheckbox.checked;
 });
@@ -1746,11 +1416,6 @@ function bootstrapApp() {
   tryResumeSession();
 }
 
-// ==================== Bootstrap ====================
-// The consent gate blocks EVERYTHING else — auth, room join/create,
-// resuming a session — until accepted. A returning user who already
-// accepted the current CONSENT_VERSION skips straight past it, same as
-// any other one-time acknowledgment.
 if (hasAcceptedCurrentConsent()) {
   bootstrapApp();
 } else {
