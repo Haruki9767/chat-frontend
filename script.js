@@ -1,5 +1,13 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
+// Bump this whenever the Privacy Policy or Terms of Service change in a
+// way that needs re-acceptance — a stored acceptance of an older version
+// number is treated as not having accepted at all. Stored in
+// localStorage only (not server-side) per explicit decision — this means
+// acceptance doesn't carry across devices/browsers, which is a known,
+// accepted tradeoff for keeping this frontend-only.
+const CONSENT_VERSION = '1';
+
 // TODO(frontend config): set this to your actual hCaptcha site key before
 // deploying. This is the PUBLIC key — safe to embed client-side (unlike
 // the secret key, which only ever lives on the separate hCaptcha
@@ -34,7 +42,36 @@ let sessionToken = localStorage.getItem('sessionToken') || null;
 // "Manage" panel (owner-only actions) and to label the chat header
 // correctly per room type.
 let currentRoom = null; // { roomCode, name, roomType, isOwner }
+// Usernames (the "username#tag" form, matching what messages/mentions
+// use) currently known to be in the room — used ONLY for @mention
+// highlighting, so a mention of someone who never actually joined stays
+// plain text instead of being misleadingly highlighted. Best-effort for
+// history replay (a name from an old message might have since left), but
+// authoritative for anyone who joins/leaves while this client is
+// connected.
+let roomParticipants = new Set();
+// Typing indicator state: userId -> { username, timer } for everyone
+// OTHER than this client currently signaling isTyping. The timer is a
+// client-side safety net (auto-expire ~4s after the last signal) in case
+// a false event is ever dropped — e.g. a tab closing without a clean
+// disconnect — so an indicator can never get stuck on forever.
+let typingUsers = new Map();
+let myTypingTimer = null; // debounce for THIS client's own outgoing typing signal
 
+const consentGate = document.getElementById('consent-gate');
+const consentCheckbox = document.getElementById('consent-checkbox');
+const consentAcceptBtn = document.getElementById('consent-accept-btn');
+
+// ---- Settings ----
+const settingsBtn = document.getElementById('settings-btn');
+const settingsView = document.getElementById('settings-view');
+const settingsCloseBtn = document.getElementById('settings-close-btn');
+const themeOptionGrid = document.getElementById('theme-option-grid');
+const fontOptionGrid = document.getElementById('font-option-grid');
+const typingIndicatorToggle = document.getElementById('typing-indicator-toggle');
+const typingIndicatorEl = document.getElementById('typing-indicator');
+const mentionSuggestions = document.getElementById('mention-suggestions');
+const copyToast = document.getElementById('copy-toast');
 const authView = document.getElementById('auth-view');
 const roomView = document.getElementById('room-view');
 const chatView = document.getElementById('chat-view');
@@ -674,6 +711,12 @@ function handleMessage(data) {
       if (typeof data.participantCount === 'number') {
         userCount.textContent = `${data.participantCount} users`;
       }
+      // Best-effort seed of roomParticipants from history authors — see
+      // the declaration comment above for why this is approximate, not
+      // authoritative (a historical sender may have since left).
+      data.messages.forEach(msg => {
+        if (msg.username) roomParticipants.add(msg.username);
+      });
       data.messages.forEach(msg => {
         const replyTo = msg.replyTo || (msg.replied_to_id ? {
           id: msg.replied_to_id,
@@ -685,6 +728,7 @@ function handleMessage(data) {
       break;
     case 'user-joined':
       addSystemMessage(`${data.username} joined`);
+      roomParticipants.add(data.username);
       // Same authoritative-count approach as room-history above — trust
       // the server's count rather than incrementing a local one, which
       // stays correct even if this client ever missed a prior event.
@@ -694,9 +738,14 @@ function handleMessage(data) {
       break;
     case 'user-left':
       addSystemMessage(`${data.username} left`);
+      roomParticipants.delete(data.username);
+      clearTypingUser(data.userId);
       if (typeof data.participantCount === 'number') {
         userCount.textContent = `${data.participantCount} users`;
       }
+      break;
+    case 'typing':
+      handleTypingEvent(data);
       break;
     // e2ee handshake/message types (Phase 5) are relayed by the server
     // but this build doesn't yet implement client-side key generation or
@@ -730,15 +779,151 @@ function handleMessage(data) {
 // actual message in one will currently fail with a server error until
 // this TODO is implemented.
 
+// ==================== Markdown + @mentions (constrained, safe subset) ====================
+// Deliberately narrow: **bold**, *italic*, `inline code`, ```code
+// blocks```, and auto-linked bare URLs. No headers/images/tables/lists —
+// those don't fit a chat bubble and only expand the surface for a
+// rendering mistake to matter. This function receives text that has
+// ALREADY been through escapeHtml() — every regex below only ever
+// constructs SPECIFIC, hardcoded tags (<strong>, <em>, <code>, <pre>,
+// <a>, <span class="mention">) around already-safe escaped content. It
+// never re-parses or trusts anything resembling raw HTML from the
+// message itself, so there is no injection path through this function.
+//
+// roomParticipants is the CURRENT room's actual connected members (from
+// presence events), not a static list — a message that mentions someone
+// who was never really in the room is deliberately left as plain text,
+// since highlighting a false match would be misleading, not helpful.
+function renderMessageBody(escapedText, roomParticipants) {
+  // Step 1: pull out fenced code blocks and inline code FIRST, replacing
+  // each with a placeholder token, so none of the later markdown/mention/
+  // URL rules can accidentally reach inside code content (e.g. an
+  // asterisk inside a code span must never become <em>).
+  const codeBlocks = [];
+  let text = escapedText.replace(/```([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(`<pre><code>${code}</code></pre>`);
+    return `\u0000CODEBLOCK${codeBlocks.length - 1}\u0000`;
+  });
+  text = text.replace(/`([^`\n]+)`/g, (_, code) => {
+    codeBlocks.push(`<code>${code}</code>`);
+    return `\u0000CODEBLOCK${codeBlocks.length - 1}\u0000`;
+  });
+
+  // Step 2: bold before italic — **x** must resolve fully before a
+  // single-asterisk rule gets a chance to misparse it. The bold pattern
+  // matches non-greedily up to the closing ** and allows any content in
+  // between (including a nested *italic* span) — an earlier, stricter
+  // version ([^\n*]+) failed on "**bold *italic* still bold**" because it
+  // couldn't match across the inner asterisks, letting the italic rule
+  // wrongly fire first and garble the result. Verified against that exact
+  // case, plus the simple/no-nesting cases, before shipping this version.
+  text = text.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*([^\n*]+)\*/g, '<em>$1</em>');
+
+  // Step 3: auto-link bare URLs. Escaped text means a literal "&" in a
+  // URL already reads as "&amp;" at this point — matched as part of the
+  // URL body so links with query strings still work, and rel/target are
+  // hardcoded (never derived from the message) to prevent any tab-nabbing
+  // trick via a crafted URL scheme beyond http(s).
+  text = text.replace(/\bhttps?:\/\/[^\s<]+[^\s<.,:;!?)\]]/g, (url) => {
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`;
+  });
+
+  // Step 4: @mentions — ONLY matched against actual current room
+  // participants (passed in), never a bare @word pattern. Longer names
+  // are checked before shorter ones sharing a prefix (sorted by length
+  // descending) so "@al" doesn't shadow a match for "@alex" typed first
+  // in the regex alternation.
+  if (roomParticipants && roomParticipants.length > 0) {
+    const escapedNames = roomParticipants
+      .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .sort((a, b) => b.length - a.length);
+    const mentionRe = new RegExp('@(' + escapedNames.join('|') + ')\\b', 'g');
+    text = text.replace(mentionRe, '<span class="mention">@$1</span>');
+  }
+
+  // Step 5: restore code blocks/spans last, after everything else has
+  // already run — their content was never exposed to steps 2-4 at all.
+  text = text.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_, i) => codeBlocks[Number(i)]);
+
+  return text;
+}
+
 function formatTime(ts) {
   if (!ts) return '';
   const d = new Date(typeof ts === 'number' && ts < 1e12 ? ts * 1000 : ts);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// ==================== Timestamp grouping state ====================
+// Tracks the previous rendered (non-system) message's timestamp/sender,
+// so addMessage can decide whether to insert a day/gap divider and
+// whether to show this message's own inline timestamp or suppress it as
+// part of a consecutive run from the same sender. Reset alongside
+// roomParticipants/typingUsers in leaveChat, so a newly joined room
+// starts its own grouping from scratch.
+let lastRenderedTimestamp = null;
+let lastRenderedSender = null;
+const TIME_DIVIDER_GAP_MS = 15 * 60 * 1000; // new divider after a 15-minute gap
+const SENDER_GROUP_GAP_MS = 2 * 60 * 1000; // show a fresh timestamp if 2+ minutes passed even from the same sender
+
+function toMs(ts) {
+  if (!ts) return Date.now();
+  return typeof ts === 'number' && ts < 1e12 ? ts * 1000 : Number(ts);
+}
+
+function formatDividerLabel(ms) {
+  const d = new Date(ms);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return time;
+  if (isYesterday) return `Yesterday, ${time}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+function maybeInsertTimeDivider(timestamp) {
+  const ms = toMs(timestamp);
+  const isNewDay = lastRenderedTimestamp !== null &&
+    new Date(ms).toDateString() !== new Date(lastRenderedTimestamp).toDateString();
+  const gapExceeded = lastRenderedTimestamp !== null && (ms - lastRenderedTimestamp) > TIME_DIVIDER_GAP_MS;
+
+  if (lastRenderedTimestamp === null || isNewDay || gapExceeded) {
+    const divider = document.createElement('div');
+    divider.className = 'time-divider';
+    divider.textContent = formatDividerLabel(ms);
+    messageArea.appendChild(divider);
+    return true; // signals "this message starts a new visual group" to the caller
+  }
+  return false;
+}
+
 function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServer, replyTo) {
+  if (isSystem || sender === 'system') {
+    addSystemMessage(text);
+    return;
+  }
+
+  const ms = toMs(timestamp);
+  const startedNewGroup = maybeInsertTimeDivider(ms);
+
+  // Suppress the inline per-bubble timestamp for a quick consecutive run
+  // from the SAME sender — only show it when the sender changed, a
+  // divider was just inserted, or enough time passed even within one
+  // sender's run that a fresh timestamp is actually informative again.
+  const sameSenderContinuation = !startedNewGroup && sender === lastRenderedSender &&
+    lastRenderedTimestamp !== null && (ms - lastRenderedTimestamp) <= SENDER_GROUP_GAP_MS;
+  const showTimestamp = !sameSenderContinuation;
+
+  lastRenderedTimestamp = ms;
+  lastRenderedSender = sender;
+
   const div = document.createElement('div');
-  div.className = 'message';
+  div.className = 'message' + (showTimestamp ? ' group-start' : '');
   if (id) div.dataset.messageId = id;
   if (sender) div.dataset.sender = sender;
   if (text) div.dataset.text = text;
@@ -751,23 +936,96 @@ function addMessage(id, userId, sender, text, isSystem, timestamp, colorFromServ
     ? `<div class="reply-quote">\u21aa ${escapeHtml(replyTo.username || '')}: ${escapeHtml((replyTo.snippet || '').slice(0, 80))}</div>`
     : '';
 
-  if (isSystem || sender === 'system') {
-    div.classList.add('system');
-    div.textContent = text;
-  } else if (isSelf) {
-    div.classList.add('self');
-    div.innerHTML = `<div class="sender" style="color:${color}">You <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
-  } else {
-    div.classList.add('other');
-    div.innerHTML = `<div class="sender" style="color:${color}">${escapeHtml(sender)} <span class="time">${timeStr}</span></div>${replyHtml}<div>${escapeHtml(text)}</div>`;
-  }
+  // Rich rendering: escape first (always), THEN run the constrained
+  // markdown/mention transform on the already-safe result — see
+  // renderMessageBody's own notes on why this ordering is what makes it
+  // safe. Never skip escapeHtml() here even though the transform looks
+  // like it "renders HTML" — it only ever wraps already-escaped content
+  // in a fixed, hardcoded set of tags.
+  const bodyHtml = renderMessageBody(escapeHtml(text), Array.from(roomParticipants));
 
-  if (!isSystem && sender !== 'system' && id) {
-    div.addEventListener('click', () => startReply(id, sender, text));
+  const senderLabel = isSelf ? 'You' : escapeHtml(sender);
+  const timeHtml = showTimestamp ? ` <span class="time">${timeStr}</span>` : '';
+  const senderHtml = showTimestamp
+    ? `<div class="sender" style="color:${color}">${senderLabel}${timeHtml}</div>`
+    : '';
+
+  div.classList.add(isSelf ? 'self' : 'other');
+  div.innerHTML = `${senderHtml}${replyHtml}<div class="bubble">${bodyHtml}</div>`;
+
+  // Short tap/click = reply (existing behavior, unchanged). Long-press
+  // (touch) or right-click (desktop, via contextmenu) = copy the raw
+  // message text — see wireMessageCopyGestures below for why these are
+  // handled together as one function per bubble, applied identically
+  // regardless of which surface rendered it (self/other/reply-carrying).
+  if (id) {
+    div.addEventListener('click', () => {
+      // Defensive check independent of touchend's preventDefault (which
+      // has known cross-browser inconsistencies for suppressing the
+      // synthetic click after a touch sequence — see
+      // wireMessageCopyGestures' notes) — a long-press that just fired
+      // should never ALSO trigger a reply.
+      if (div.dataset.longPress === 'true') {
+        div.dataset.longPress = 'false';
+        return;
+      }
+      startReply(id, sender, text);
+    });
+    wireMessageCopyGestures(div, text);
   }
 
   messageArea.appendChild(div);
   messageArea.scrollTop = messageArea.scrollHeight;
+}
+
+const LONG_PRESS_MS = 500;
+
+// One shared wiring function for the long-press (touch) / right-click
+// (desktop) "copy this message" gesture, applied to every message bubble
+// regardless of sender. Deliberately kept independent of the existing
+// tap-to-reply click handler (registered separately on the same element)
+// rather than merged into one handler with branching — a timer-based
+// long-press naturally coexists with a plain click handler: a short tap
+// fires the click listener as it always did, a held tap fires this one
+// instead and suppresses the subsequent click via preventDefault on
+// touchend.
+function wireMessageCopyGestures(el, text) {
+  let pressTimer = null;
+
+  el.addEventListener('touchstart', () => {
+    el.dataset.longPress = 'false';
+    pressTimer = setTimeout(() => {
+      el.dataset.longPress = 'true';
+      el.classList.add('pressing');
+      copyToClipboard(text, null, null, true);
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, LONG_PRESS_MS);
+  }, { passive: true });
+
+  const cancelPress = () => {
+    clearTimeout(pressTimer);
+    el.classList.remove('pressing');
+  };
+  el.addEventListener('touchmove', cancelPress);
+  el.addEventListener('touchend', (e) => {
+    cancelPress();
+    if (el.dataset.longPress === 'true') {
+      // Belt-and-suspenders against the tap-to-reply click that would
+      // otherwise ALSO fire right after a long-press release: preventDefault
+      // here suppresses the browser's synthetic click on current Chrome
+      // Mobile/iOS Safari, but that specific behavior has a history of
+      // cross-browser inconsistency, so the reply click handler ALSO checks
+      // el.dataset.longPress itself (see the click listener above, in
+      // addMessage) rather than depending on preventDefault alone.
+      e.preventDefault();
+    }
+  });
+  el.addEventListener('touchcancel', cancelPress);
+
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    copyToClipboard(text, null, null, true);
+  });
 }
 
 function startReply(id, sender, text) {
@@ -790,6 +1048,170 @@ function addSystemMessage(text) {
   messageArea.scrollTop = messageArea.scrollHeight;
 }
 
+const TYPING_DEBOUNCE_MS = 3000; // stop signaling "typing" after this long with no further input
+const TYPING_SEND_THROTTLE_MS = 2000; // minimum gap between outgoing "still typing" sends, so holding a key down doesn't flood the socket
+
+let lastTypingSentAt = 0;
+
+function sendTypingSignal(isTyping) {
+  if (!typingIndicatorsEnabled()) return; // full opt-out — see the settings toggle notes
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (currentRoom && currentRoom.roomType === 'e2ee') return; // no chat-message support there yet either (see the e2ee TODO) — nothing meaningful to signal about
+  ws.send(JSON.stringify({ type: 'typing', isTyping }));
+}
+
+const TYPING_EXPIRE_MS = 4000; // safety-net auto-clear if a "stopped typing" signal is ever dropped (e.g. tab closes uncleanly)
+
+function handleTypingEvent(data) {
+  if (!typingIndicatorsEnabled()) return; // full opt-out — never render others' signals either, matching the settings toggle notes
+  if (!data.userId) return;
+
+  clearTimeout((typingUsers.get(data.userId) || {}).timer);
+
+  if (data.isTyping) {
+    const timer = setTimeout(() => clearTypingUser(data.userId), TYPING_EXPIRE_MS);
+    typingUsers.set(data.userId, { username: data.username, timer });
+  } else {
+    typingUsers.delete(data.userId);
+  }
+  renderTypingIndicator();
+}
+
+function clearTypingUser(userId) {
+  const entry = typingUsers.get(userId);
+  if (entry) clearTimeout(entry.timer);
+  typingUsers.delete(userId);
+  renderTypingIndicator();
+}
+
+function renderTypingIndicator() {
+  const names = Array.from(typingUsers.values()).map(u => u.username);
+  if (names.length === 0) {
+    typingIndicatorEl.innerHTML = '';
+  } else if (names.length === 1) {
+    typingIndicatorEl.innerHTML = `${escapeHtml(names[0])} is typing<span class="dots"></span>`;
+  } else if (names.length === 2) {
+    typingIndicatorEl.innerHTML = `${escapeHtml(names[0])} and ${escapeHtml(names[1])} are typing<span class="dots"></span>`;
+  } else {
+    typingIndicatorEl.innerHTML = `Several people are typing<span class="dots"></span>`;
+  }
+}
+
+// ==================== @mention autocomplete ====================
+// Suggests only ACTUAL current room participants (see roomParticipants),
+// same restriction as renderMessageBody's highlighting — never an
+// arbitrary/freeform mention target.
+let mentionActiveIndex = -1;
+let mentionMatchStart = -1; // index into messageInput.value where the "@" of the current mention attempt starts
+
+function handleMentionAutocomplete() {
+  const value = messageInput.value;
+  const cursor = messageInput.selectionStart;
+  const upToCursor = value.slice(0, cursor);
+  const match = upToCursor.match(/@([a-zA-Z0-9_]*)$/);
+
+  if (!match) {
+    hideMentionSuggestions();
+    return;
+  }
+
+  const query = match[1].toLowerCase();
+  mentionMatchStart = cursor - match[0].length;
+
+  const candidates = Array.from(roomParticipants)
+    .filter(name => name.toLowerCase().includes(query))
+    .slice(0, 6);
+
+  if (candidates.length === 0) {
+    hideMentionSuggestions();
+    return;
+  }
+
+  mentionActiveIndex = 0;
+  mentionSuggestions.innerHTML = '';
+  candidates.forEach((name, i) => {
+    const opt = document.createElement('div');
+    opt.className = 'mention-option' + (i === 0 ? ' active' : '');
+    opt.textContent = name;
+    opt.addEventListener('mousedown', (e) => {
+      // mousedown (not click) so this fires BEFORE the input loses focus,
+      // which would otherwise close the dropdown first and lose the
+      // selection.
+      e.preventDefault();
+      applyMentionSelection(name);
+    });
+    mentionSuggestions.appendChild(opt);
+  });
+  mentionSuggestions.classList.add('visible');
+}
+
+function hideMentionSuggestions() {
+  mentionSuggestions.classList.remove('visible');
+  mentionSuggestions.innerHTML = '';
+  mentionActiveIndex = -1;
+  mentionMatchStart = -1;
+}
+
+function applyMentionSelection(name) {
+  const value = messageInput.value;
+  const cursor = messageInput.selectionStart;
+  const before = value.slice(0, mentionMatchStart);
+  const after = value.slice(cursor);
+  const newValue = `${before}@${name} ${after}`;
+  messageInput.value = newValue;
+  const newCursor = before.length + name.length + 2;
+  messageInput.setSelectionRange(newCursor, newCursor);
+  hideMentionSuggestions();
+  messageInput.focus();
+}
+
+// Arrow-key navigation and Enter-to-select while the dropdown is open —
+// added as its own keydown listener (not merged into the existing Enter-
+// to-send one) so the two concerns stay easy to reason about separately;
+// the existing Enter-to-send handler already checks
+// mentionSuggestions.classList.contains('visible') and backs off when
+// this one should act instead.
+messageInput.addEventListener('keydown', (e) => {
+  if (!mentionSuggestions.classList.contains('visible')) return;
+  const options = mentionSuggestions.querySelectorAll('.mention-option');
+  if (options.length === 0) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    mentionActiveIndex = (mentionActiveIndex + 1) % options.length;
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    mentionActiveIndex = (mentionActiveIndex - 1 + options.length) % options.length;
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    applyMentionSelection(options[mentionActiveIndex].textContent);
+    return;
+  } else if (e.key === 'Escape') {
+    hideMentionSuggestions();
+    return;
+  } else {
+    return;
+  }
+  options.forEach((o, i) => o.classList.toggle('active', i === mentionActiveIndex));
+});
+
+
+
+messageInput.addEventListener('input', () => {
+  handleMentionAutocomplete();
+
+  const now = Date.now();
+  if (now - lastTypingSentAt > TYPING_SEND_THROTTLE_MS) {
+    sendTypingSignal(true);
+    lastTypingSentAt = now;
+  }
+  clearTimeout(myTypingTimer);
+  myTypingTimer = setTimeout(() => {
+    sendTypingSignal(false);
+    lastTypingSentAt = 0;
+  }, TYPING_DEBOUNCE_MS);
+});
+
 sendBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keydown', (e) => {
   // Only trigger on the actual Enter press, not the browser's repeat-fire
@@ -798,7 +1220,7 @@ messageInput.addEventListener('keydown', (e) => {
   // the standard way to detect that. Without this, some mobile virtual
   // keyboards were firing this handler in a way that, combined with the
   // Send button's own click handler, sent the same message twice.
-  if (e.key === 'Enter' && !e.repeat && !e.isComposing) {
+  if (e.key === 'Enter' && !e.repeat && !e.isComposing && !mentionSuggestions.classList.contains('visible')) {
     e.preventDefault();
     sendMessage();
   }
@@ -827,6 +1249,13 @@ function sendMessage() {
   sendBtn.disabled = true;
   setTimeout(() => { sendInFlight = false; sendBtn.disabled = false; }, SEND_DEBOUNCE_MS);
 
+  // Sending counts as "done typing" — stop the indicator immediately
+  // rather than waiting for the idle debounce to expire on its own.
+  clearTimeout(myTypingTimer);
+  myTypingTimer = null;
+  sendTypingSignal(false);
+  lastTypingSentAt = 0;
+
   const payload = { type: 'chat-message', message: text };
   if (replyingTo) {
     payload.replyTo = replyingTo.id;
@@ -836,7 +1265,9 @@ function sendMessage() {
   messageInput.value = '';
   replyingTo = null;
   replyPreview.style.display = 'none';
+  hideMentionSuggestions();
 }
+
 
 leaveBtn.addEventListener('click', leaveChat);
 
@@ -865,6 +1296,14 @@ function leaveChat() {
   // around is fragile to reason about later.
   manageRoomBtn.style.display = 'none';
   currentRoom = null;
+  // Reset per-room state that would otherwise leak stale names/timers
+  // into whatever room is joined next.
+  roomParticipants = new Set();
+  typingUsers.forEach(u => clearTimeout(u.timer));
+  typingUsers.clear();
+  clearTimeout(myTypingTimer);
+  myTypingTimer = null;
+  renderTypingIndicator();
   resetCreateBtn();
 }
 
@@ -883,7 +1322,24 @@ function leaveChat() {
 // document.execCommand('copy') approach — a hidden, temporary textarea
 // — which has much broader compatibility, including in WebViews that
 // don't expose the modern Clipboard API at all.
-async function copyToClipboard(text, button, resetLabel) {
+// Copies text to the clipboard and only shows a success confirmation
+// once it's actually confirmed to have worked — the original version of
+// every copy button here fired-and-forgot the Clipboard API promise and
+// showed "Copied" unconditionally, which would have been a silent lie in
+// any environment where navigator.clipboard is unavailable or denied
+// (several Android WebView configurations fall into this category,
+// unlike a full mobile browser). Falls back to the older
+// document.execCommand('copy') approach — a hidden, temporary textarea
+// — which has much broader compatibility, including in WebViews that
+// don't expose the modern Clipboard API at all.
+//
+// Two feedback modes: pass a button + its reset label to relabel that
+// button temporarily (the original use case — owner-key/token/room-code
+// copy buttons that have a natural place to show "Copied"), or pass
+// useToast=true for a gesture with no dedicated button to relabel (the
+// long-press/right-click message-copy gesture) — shows the floating
+// #copy-toast instead.
+async function copyToClipboard(text, button, resetLabel, useToast) {
   let ok = false;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     try {
@@ -909,9 +1365,18 @@ async function copyToClipboard(text, button, resetLabel) {
     }
   }
 
-  button.textContent = ok ? 'Copied' : 'Copy failed \u2014 select manually';
-  setTimeout(() => { button.textContent = resetLabel; }, 1800);
+  const message = ok ? 'Copied' : 'Copy failed \u2014 select manually';
+
+  if (useToast) {
+    copyToast.textContent = message;
+    copyToast.classList.add('visible');
+    setTimeout(() => { copyToast.classList.remove('visible'); }, 1500);
+  } else if (button) {
+    button.textContent = message;
+    setTimeout(() => { button.textContent = resetLabel; }, 1800);
+  }
 }
+
 
 // Feature: loading states for any action with real network latency (join,
 // create, sign in, log in, etc.) — replaces a button's label with a
@@ -1125,7 +1590,148 @@ async function revokeJoinToken(tokenId) {
   }
 }
 
+// ==================== Settings: theme & font ====================
+const THEMES = [
+  { id: 'default', label: 'Ledger Green' },
+  { id: 'dusk', label: 'Dusk' },
+  { id: 'ledger', label: 'Sepia' },
+];
+const FONTS = [
+  { id: 'default', label: 'Newsreader' },
+  { id: 'sans-only', label: 'Sans only' },
+  { id: 'mono-numerals', label: 'Monospace numerals' },
+];
+
+function applyTheme(themeId) {
+  if (themeId === 'default') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', themeId);
+  }
+  localStorage.setItem('theme', themeId);
+  renderSettingsOptions();
+}
+
+function applyFont(fontId) {
+  if (fontId === 'default') {
+    document.documentElement.removeAttribute('data-font');
+  } else {
+    document.documentElement.setAttribute('data-font', fontId);
+  }
+  localStorage.setItem('font', fontId);
+  renderSettingsOptions();
+}
+
+function renderSettingsOptions() {
+  const currentTheme = localStorage.getItem('theme') || 'default';
+  const currentFont = localStorage.getItem('font') || 'default';
+
+  themeOptionGrid.innerHTML = '';
+  THEMES.forEach(t => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'option-chip' + (t.id === currentTheme ? ' active' : '');
+    chip.textContent = t.label;
+    chip.addEventListener('click', () => applyTheme(t.id));
+    themeOptionGrid.appendChild(chip);
+  });
+
+  fontOptionGrid.innerHTML = '';
+  FONTS.forEach(f => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'option-chip' + (f.id === currentFont ? ' active' : '');
+    chip.textContent = f.label;
+    chip.addEventListener('click', () => applyFont(f.id));
+    fontOptionGrid.appendChild(chip);
+  });
+}
+
+settingsBtn.addEventListener('click', () => {
+  renderSettingsOptions();
+  typingIndicatorToggle.checked = typingIndicatorsEnabled();
+  roomView.style.display = 'none';
+  chatView.style.display = 'none';
+  settingsView.style.display = 'flex';
+});
+
+settingsCloseBtn.addEventListener('click', () => {
+  settingsView.style.display = 'none';
+  // Settings is reachable from the room list; returning to it is the
+  // correct default regardless of whether the person came from an active
+  // chat, since opening Settings itself always hid chatView above.
+  roomView.style.display = 'flex';
+});
+
+// Full opt-out, not just muting the display: when off, this client
+// neither SENDS its own typing signal nor renders anyone else's. Not
+// sending your own signal is the more genuinely private default (matches
+// this app's whole "discretion" design world) — a person who wants
+// privacy from typing-presence shouldn't still be broadcasting it to
+// others just because they personally don't want to see it back.
+function typingIndicatorsEnabled() {
+  return localStorage.getItem('typingIndicatorsEnabled') !== 'false'; // default ON
+}
+
+typingIndicatorToggle.addEventListener('change', () => {
+  localStorage.setItem('typingIndicatorsEnabled', typingIndicatorToggle.checked ? 'true' : 'false');
+  if (!typingIndicatorToggle.checked) {
+    // Turning it off mid-room: stop showing what's already been received
+    // and tell the room we've stopped typing, in case a signal was
+    // mid-flight when the setting changed.
+    typingUsers.forEach(u => clearTimeout(u.timer));
+    typingUsers.clear();
+    renderTypingIndicator();
+    sendTypingSignal(false);
+  }
+});
+
+// ==================== Password visibility toggles ====================
+// One generic wiring pass over every .password-toggle button, rather than
+// a separate handler per field (there are 8 password inputs across auth,
+// join/create, and room management) — each toggle's data-for attribute
+// names the input it controls.
+const EYE_OPEN_SVG = '<svg class="icon" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_CLOSED_SVG = '<svg class="icon" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.2A11 11 0 0 1 12 5c7 0 11 7 11 7a13.4 13.4 0 0 1-3.4 4.1M6.7 6.7C3.4 8.9 1 12 1 12s4 7 11 7a10.6 10.6 0 0 0 5.3-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+
+document.querySelectorAll('.password-toggle').forEach(btn => {
+  const input = document.getElementById(btn.dataset.for);
+  if (!input) return;
+  btn.innerHTML = EYE_OPEN_SVG;
+  btn.addEventListener('click', () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    btn.innerHTML = showing ? EYE_OPEN_SVG : EYE_CLOSED_SVG;
+    btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  });
+});
+
+// ==================== Consent gate ====================
+consentCheckbox.addEventListener('change', () => {
+  consentAcceptBtn.disabled = !consentCheckbox.checked;
+});
+
+consentAcceptBtn.addEventListener('click', () => {
+  localStorage.setItem('consentVersion', CONSENT_VERSION);
+  consentGate.style.display = 'none';
+  bootstrapApp();
+});
+
+function hasAcceptedCurrentConsent() {
+  return localStorage.getItem('consentVersion') === CONSENT_VERSION;
+}
+
+function bootstrapApp() {
+  tryResumeSession();
+}
+
 // ==================== Bootstrap ====================
-// No site-wide gate anymore — go straight to resuming a session or
-// showing the login/register screen.
-tryResumeSession();
+// The consent gate blocks EVERYTHING else — auth, room join/create,
+// resuming a session — until accepted. A returning user who already
+// accepted the current CONSENT_VERSION skips straight past it, same as
+// any other one-time acknowledgment.
+if (hasAcceptedCurrentConsent()) {
+  bootstrapApp();
+} else {
+  consentGate.style.display = 'flex';
+}
