@@ -1,36 +1,9 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
-// Bump this whenever the Privacy Policy or Terms of Service change in a
-// way that needs re-acceptance — a stored acceptance of an older version
-// number is treated as not having accepted at all. Stored in
-// localStorage only (not server-side) per explicit decision — this means
-// acceptance doesn't carry across devices/browsers, which is a known,
-// accepted tradeoff for keeping this frontend-only.
 const CONSENT_VERSION = '1';
 
-// TODO(frontend config): set this to your actual hCaptcha site key before
-// deploying. This is the PUBLIC key — safe to embed client-side (unlike
-// the secret key, which only ever lives on the separate hCaptcha
-// verification Worker, never here). Without a real value, the widget
-// will not render and login/register will be blocked client-side (see
-// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-// The separate, standalone Cloudflare Worker dedicated to hCaptcha
-// verification (owns the secret key and the actual siteverify call —
-// never this frontend, never the chat backend). Called DIRECTLY from
-// here, in the browser, rather than by the chat backend server-to-server
-// — that Worker's own CORS layer (HCAPTCHA_ALLOWED_ORIGINS) exists
-// specifically to support being called this way. This backend/frontend
-// split was chosen after repeated, unresolved 404s calling this same
-// endpoint Worker-to-Worker from inside the chat backend, which did not
-// reproduce via curl or from a browser — see index.js's comments above
-// where verifyHcaptcha used to live for the full account of that.
-//
-// Security note: since verification now happens entirely client-side,
-// hCaptcha is an abuse deterrent, not a hard guarantee — the chat
-// backend no longer independently re-checks it. This was a deliberate,
-// informed tradeoff.
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
@@ -1578,15 +1551,34 @@ function renderJoinTokens(tokens) {
     const row = document.createElement('div');
     row.className = 'token-row' + (t.revokedAt ? ' revoked' : '');
 
+    const wrap = document.createElement('div');
+    wrap.className = 'token-row-info';
+
     const info = document.createElement('div');
     const created = new Date(t.createdAt * 1000).toLocaleDateString();
-    const usesText = t.uses.length === 0
-      ? 'never used'
-      : `used by ${t.uses.length} join${t.uses.length === 1 ? '' : 's'}`;
-    info.innerHTML = `Token ${escapeHtml(t.tokenId.slice(0, 8))}\u2026 \u00b7 created ${created}` +
-      `<div class="token-uses">${escapeHtml(usesText)}${t.revokedAt ? ' \u00b7 revoked' : ''}</div>`;
+    info.innerHTML = `Token ${escapeHtml(t.tokenId.slice(0, 8))}\u2026 \u00b7 created ${created}${t.revokedAt ? ' \u00b7 revoked' : ''}`;
 
-    row.appendChild(info);
+    // Actual per-use attribution — WHO joined via this token, not just a
+    // count — this is the whole point of a per-token invite log; a bare
+    // count was never actually useful for that purpose.
+    const usesList = document.createElement('div');
+    usesList.className = 'token-uses';
+    if (t.uses.length === 0) {
+      usesList.textContent = 'Never used';
+    } else {
+      t.uses.forEach(u => {
+        const useLine = document.createElement('div');
+        useLine.className = 'token-use-line';
+        const who = u.username ? escapeHtml(u.username) : '(deleted account)';
+        const when = new Date(u.joinedAt * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        useLine.innerHTML = `<span class="numeric">${who}</span> \u2014 ${when}`;
+        usesList.appendChild(useLine);
+      });
+    }
+
+    wrap.appendChild(info);
+    wrap.appendChild(usesList);
+    row.appendChild(wrap);
 
     if (!t.revokedAt) {
       const revokeBtn = document.createElement('button');
@@ -1625,9 +1617,10 @@ const THEMES = [
   { id: 'ledger', label: 'Sepia' },
 ];
 const FONTS = [
-  { id: 'default', label: 'Newsreader' },
-  { id: 'sans-only', label: 'Sans only' },
-  { id: 'mono-numerals', label: 'Monospace numerals' },
+  { id: 'default', label: 'Newsreader + Inter' },
+  { id: 'mono', label: 'Monospace' },
+  { id: 'classic-serif', label: 'Source Serif' },
+  { id: 'grotesk', label: 'Space Grotesk' },
 ];
 
 function applyTheme(themeId) {
