@@ -1,3 +1,6 @@
+/* Paranoid Chat — Numbered-Account Discretion
+   See DESIGN.md for the full system record. No gradients anywhere. */
+
 @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
@@ -18,6 +21,49 @@
 
   --radius-sm: 4px;
   --radius-md: 6px;
+}
+
+/* ---- Alternate themes (Settings > Theme) — each stays within the same
+   design world (flat color, no gradients, one accent per screen); only
+   the palette changes, never the structural principles. ---- */
+html[data-theme="dusk"] {
+  --ink: #EDEBE4;
+  --paper: #17181B;
+  --paper-raised: #1F2124;
+  --line: #33353A;
+  --line-strong: #45484E;
+  --muted: #9B9A93;
+  --accent: #4F9A82;
+  --accent-hover: #6BB49C;
+  --accent-tint: #1E2D28;
+  --signal: #C2685A;
+  --signal-tint: #2E2020;
+}
+
+html[data-theme="ledger"] {
+  --ink: #2A2114;
+  --paper: #F4EEDD;
+  --paper-raised: #FBF7EC;
+  --line: #DFD3B4;
+  --line-strong: #CBBB8F;
+  --muted: #7A6A4C;
+  --accent: #7A4A24;
+  --accent-hover: #603A1B;
+  --accent-tint: #ECE0C6;
+  --signal: #8A3324;
+  --signal-tint: #F0DFCF;
+}
+
+/* ---- Alternate fonts (Settings > Font) — only the serif (used for
+   numeric/identity elements) changes; Inter remains the sans throughout,
+   since swapping the UI's body font is a much bigger visual disruption
+   than swapping only the numeral treatment. ---- */
+html[data-font="sans-only"] {
+  --serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+html[data-font="mono-numerals"] {
+  --serif: ui-monospace, 'SF Mono', 'IBM Plex Mono', Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -156,7 +202,29 @@ button.danger:hover, #delete-account-btn:hover { background: var(--signal-tint);
   margin: 0;
 }
 
-/* ---- Segmented toggles (auth mode, room mode, room type) ---- */
+/* ---- Password visibility toggle ---- */
+.password-field {
+  position: relative;
+  display: block;
+}
+.password-field input { padding-right: 2.4rem; width: 100%; }
+.password-toggle {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.password-toggle:hover { background: none; color: var(--ink); }
+.password-toggle .icon { width: 1.05rem; height: 1.05rem; }
+
+
 #auth-mode-toggle, #mode-toggle, #room-type-toggle {
   display: flex;
   gap: 0;
