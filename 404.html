@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Not found — Paranoid Chat</title>
+<script>
+  (function () {
+    try {
+      var theme = localStorage.getItem("theme");
+      var font = localStorage.getItem("font");
+      if (theme && theme !== "default") document.documentElement.setAttribute("data-theme", theme);
+      if (font && font !== "default") document.documentElement.setAttribute("data-font", font);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="not-found-view">
+    <span class="code-value numeric">404</span>
+    <h1>Page not found</h1>
+    <p class="hint">There's nothing at this address. If you followed a link here, it may be out of date.</p>
+    <a href="/" style="display:inline-block">
+      <button type="button" class="primary">Back to Paranoid Chat</button>
+    </a>
+  </div>
+</body>
+</html>
