@@ -1,13 +1,36 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 
 // Bump this whenever the Privacy Policy or Terms of Service change in a
-// way that needs re-acceptance
+// way that needs re-acceptance — a stored acceptance of an older version
+// number is treated as not having accepted at all. Stored in
+// localStorage only (not server-side) per explicit decision — this means
+// acceptance doesn't carry across devices/browsers, which is a known,
+// accepted tradeoff for keeping this frontend-only.
 const CONSENT_VERSION = '1';
 
-
+// TODO(frontend config): set this to your actual hCaptcha site key before
+// deploying. This is the PUBLIC key — safe to embed client-side (unlike
+// the secret key, which only ever lives on the separate hCaptcha
+// verification Worker, never here). Without a real value, the widget
+// will not render and login/register will be blocked client-side (see
+// the auth submit handler below), since there'd be no token to verify.
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-
+// The separate, standalone Cloudflare Worker dedicated to hCaptcha
+// verification (owns the secret key and the actual siteverify call —
+// never this frontend, never the chat backend). Called DIRECTLY from
+// here, in the browser, rather than by the chat backend server-to-server
+// — that Worker's own CORS layer (HCAPTCHA_ALLOWED_ORIGINS) exists
+// specifically to support being called this way. This backend/frontend
+// split was chosen after repeated, unresolved 404s calling this same
+// endpoint Worker-to-Worker from inside the chat backend, which did not
+// reproduce via curl or from a browser — see index.js's comments above
+// where verifyHcaptcha used to live for the full account of that.
+//
+// Security note: since verification now happens entirely client-side,
+// hCaptcha is an abuse deterrent, not a hard guarantee — the chat
+// backend no longer independently re-checks it. This was a deliberate,
+// informed tradeoff.
 const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
 
 let ws = null;
@@ -15,7 +38,23 @@ let intentionalClose = false; // set right before we call ws.close() ourselves, 
 let account = null; // { accountId, username, displayTag, color }
 let sessionToken = localStorage.getItem('sessionToken') || null;
 
-
+// Current room's info, populated once join succeeds — needed by the
+// "Manage" panel (owner-only actions) and to label the chat header
+// correctly per room type.
+let currentRoom = null; // { roomCode, name, roomType, isOwner }
+// Usernames (the "username#tag" form, matching what messages/mentions
+// use) currently known to be in the room — used ONLY for @mention
+// highlighting, so a mention of someone who never actually joined stays
+// plain text instead of being misleadingly highlighted. Best-effort for
+// history replay (a name from an old message might have since left), but
+// authoritative for anyone who joins/leaves while this client is
+// connected.
+let roomParticipants = new Set();
+// Typing indicator state: userId -> { username, timer } for everyone
+// OTHER than this client currently signaling isTyping. The timer is a
+// client-side safety net (auto-expire ~4s after the last signal) in case
+// a false event is ever dropped — e.g. a tab closing without a clean
+// disconnect — so an indicator can never get stuck on forever.
 let typingUsers = new Map();
 let myTypingTimer = null; // debounce for THIS client's own outgoing typing signal
 
@@ -23,7 +62,7 @@ const consentGate = document.getElementById('consent-gate');
 const consentCheckbox = document.getElementById('consent-checkbox');
 const consentAcceptBtn = document.getElementById('consent-accept-btn');
 
-// Settings 
+// ---- Settings ----
 const settingsBtn = document.getElementById('settings-btn');
 const settingsView = document.getElementById('settings-view');
 const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -39,7 +78,7 @@ const chatView = document.getElementById('chat-view');
 const manageRoomView = document.getElementById('manage-room-view');
 const ownerKeyModal = document.getElementById('owner-key-modal');
 
-// Auth 
+// ---- Auth ----
 const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
@@ -54,7 +93,7 @@ const accountDisplay = document.getElementById('account-display');
 const logoutBtn = document.getElementById('logout-btn');
 const deleteAccountBtn = document.getElementById('delete-account-btn');
 
-// Room join
+// ---- Room join/create ----
 const modeJoinBtn = document.getElementById('mode-join-btn');
 const modeCreateBtn = document.getElementById('mode-create-btn');
 const joinPanel = document.getElementById('join-panel');
@@ -75,12 +114,12 @@ const gatedRoomAppPasswordInput = document.getElementById('gated-room-app-passwo
 const createBtn = document.getElementById('create-btn');
 const roomError = document.getElementById('room-error');
 
-// Owner key modal
+// ---- Owner key modal (shown once, at e2ee room creation) ----
 const ownerKeyValue = document.getElementById('owner-key-value');
 const ownerKeyCopyBtn = document.getElementById('owner-key-copy-btn');
 const ownerKeyCloseBtn = document.getElementById('owner-key-close-btn');
 
-//  Chat 
+// ---- Chat ----
 const leaveBtn = document.getElementById('leave-btn');
 const manageRoomBtn = document.getElementById('manage-room-btn');
 const roomNameDisplay = document.getElementById('room-name-display');
@@ -94,7 +133,7 @@ const replyPreview = document.getElementById('reply-preview');
 const replyPreviewText = document.getElementById('reply-preview-text');
 const replyCancelBtn = document.getElementById('reply-cancel-btn');
 
-//  Manage room panel 
+// ---- Manage room panel ----
 const manageCloseBtn = document.getElementById('manage-close-btn');
 const manageRoomCodeValue = document.getElementById('manage-room-code-value');
 const manageRoomCodeCopyBtn = document.getElementById('manage-room-code-copy-btn');
@@ -113,7 +152,9 @@ const manageTokensError = document.getElementById('manage-tokens-error');
 
 let replyingTo = null; // { id, username, snippet }
 
-// Deterministic color
+// ---- Deterministic color, mirrors the server's algorithm, used so
+// history-replayed messages (which don't carry a color from D1) still
+// render in the correct consistent color per user. ----
 const USER_COLORS = [
   '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
   '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
@@ -128,6 +169,10 @@ function colorForUserId(userId) {
   return USER_COLORS[hash % USER_COLORS.length];
 }
 
+// Reads the hCaptcha widget's current response token. Returns '' if the
+// widget hasn't rendered (e.g. HCAPTCHA_SITE_KEY is blank) or hasn't been
+// solved yet — the backend will correctly reject an empty token rather
+// than this needing its own client-side validation.
 function getHcaptchaToken() {
   if (typeof hcaptcha === 'undefined') return '';
   try {
@@ -141,7 +186,17 @@ function resetHcaptcha() {
   try { hcaptcha.reset(); } catch {}
 }
 
-verifyHcaptchaClientSide(token) {
+// Calls the hCaptcha verification Worker DIRECTLY from the browser (a
+// real cross-origin request the Worker's own CORS layer is built to
+// accept — no manual Origin header needed here, the browser sets one
+// automatically and truthfully, unlike the abandoned server-to-server
+// approach). Returns true only on an explicit { ok: true } — every other
+// outcome (network failure, non-200, malformed body, explicit
+// { ok: false }) is treated as "not verified." This is now the ONLY
+// verification that happens anywhere in this app — see the note by
+// HCAPTCHA_VERIFY_URL above for why the chat backend no longer
+// independently re-checks it.
+async function verifyHcaptchaClientSide(token) {
   if (!token) return false;
   try {
     const res = await fetch(HCAPTCHA_VERIFY_URL, {
@@ -158,7 +213,13 @@ verifyHcaptchaClientSide(token) {
   }
 }
 
-
+// The hCaptcha script auto-renders any element with class="h-captcha" and
+// a data-sitekey attribute the moment it loads, so data-sitekey has to be
+// set on the container BEFORE that script runs — done here, at the top
+// of this file, rather than waiting for a DOMContentLoaded-style event,
+// since api.js is loaded with defer (runs after the DOM is parsed but the
+// exact ordering relative to this script depends on load timing either
+// way — setting the attribute as early as possible is the safe choice).
 (function initHcaptchaWidget() {
   const el = document.getElementById('auth-hcaptcha');
   const warning = document.getElementById('auth-hcaptcha-missing-warning');
@@ -170,7 +231,7 @@ verifyHcaptchaClientSide(token) {
   if (el) el.setAttribute('data-sitekey', HCAPTCHA_SITE_KEY);
 })();
 
-// Auth mode toggle 
+// ---- Auth mode toggle ----
 let authMode = 'login';
 authLoginBtn.addEventListener('click', () => setAuthMode('login'));
 authRegisterBtn.addEventListener('click', () => setAuthMode('register'));
@@ -207,7 +268,9 @@ authSubmitBtn.addEventListener('click', async () => {
     return;
   }
 
-  // App password gates
+  // App password gates account CREATION (registration) specifically —
+  // not login, since a returning account holder isn't creating anything
+  // new. Matches the same requirement now on every room-creation route.
   let appPassword = '';
   if (authMode === 'register') {
     appPassword = authAppPasswordInput.value;
@@ -227,7 +290,10 @@ authSubmitBtn.addEventListener('click', async () => {
   authSubmitBtn.disabled = true;
   setButtonLoading(authSubmitBtn, true);
 
- 
+  // Verified directly against the hCaptcha verification Worker, in the
+  // browser, BEFORE ever calling the chat backend — see
+  // verifyHcaptchaClientSide's notes for why this replaced a
+  // server-to-server check.
   const verified = await verifyHcaptchaClientSide(hcaptchaToken);
   if (!verified) {
     authError.textContent = 'hCaptcha verification failed \u2014 please try again';
