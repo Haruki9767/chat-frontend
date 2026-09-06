@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Paranoid Chat</title>
+<script>
+  (function () {
+    try {
+      var theme = localStorage.getItem("theme");
+      var font = localStorage.getItem("font");
+      if (theme && theme !== "default") document.documentElement.setAttribute("data-theme", theme);
+      if (font && font !== "default") document.documentElement.setAttribute("data-font", font);
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="legal-view">
+    <h1>Privacy Policy</h1>
+    <p class="hint">Last updated: this document describes Paranoid Chat's data handling as of the current build. It is written to reflect what the service actually does, not a generic template.</p>
+
+    <h2>What this service is</h2>
+    <p>Paranoid Chat is a personal project offering three kinds of chat rooms with different privacy models: password-protected rooms, 24-hour ephemeral rooms, and end-to-end-encrypted (e2ee) rooms. This policy explains what data each model involves.</p>
+
+    <h2>Account information</h2>
+    <p>Creating an account requires a username, a password (stored only as a salted hash, never in plain text), and completion of an hCaptcha challenge (verified directly by your browser against a separate hCaptcha verification service — see "Third parties" below). A short display tag and a display color are derived automatically from your account and are not personal information.</p>
+
+    <h2>Message data by room type</h2>
+    <ul>
+      <li><strong>Password rooms:</strong> messages are stored on the server for up to 7 days, then automatically and permanently deleted.</li>
+      <li><strong>Ephemeral rooms:</strong> messages are never written to any database. They exist only in the live connection between participants and in the room's temporary in-memory state while the room is active. The room itself is deleted after 24 hours.</li>
+      <li><strong>End-to-end-encrypted rooms:</strong> messages are never written to any database, at any point, regardless of the room's lifetime. The server relays message content without being able to read it.</li>
+    </ul>
+
+    <h2>Room passwords and keys</h2>
+    <p>Room passwords are stored only as salted hashes, the same as account passwords. End-to-end-encrypted rooms use a one-time "owner key" instead of a room password; it is shown to the room's creator exactly once and is never stored or displayed again in any recoverable form.</p>
+
+    <h2>Join tokens</h2>
+    <p>Room owners may generate join tokens to invite specific people. We record which account used a given token and when, so the room owner can see who joined via that invitation. This record is tied to the token, not shared outside the room's own management view.</p>
+
+    <h2>Automatic deletion</h2>
+    <p>Accounts that have not logged in or sent a message for 90 consecutive days are automatically and permanently deleted, along with their sessions. Ephemeral rooms are deleted 24 hours after creation regardless of activity.</p>
+
+    <h2>Third parties</h2>
+    <p>This service uses hCaptcha to reduce automated abuse of account registration and login. Your browser communicates directly with a separate verification service to complete this check; we do not send your captcha responses through our own servers. hCaptcha's own privacy practices apply to that interaction and are outside our control.</p>
+    <p>This service is hosted on Cloudflare's infrastructure (Workers, Durable Objects, D1, and Pages). Cloudflare processes connection metadata (such as IP address) as part of operating that infrastructure, independent of anything this application does with your data.</p>
+
+    <h2>What we do not do</h2>
+    <p>We do not sell your data. We do not use your messages for advertising, analytics, or any purpose other than delivering them to the room you sent them in. We do not read the content of end-to-end-encrypted rooms — the server cannot, by design.</p>
+
+    <h2>Your choices</h2>
+    <p>You may delete your account at any time from within the app. This permanently removes your account and active sessions. It does not retroactively delete messages you previously sent in password rooms that are still within their 7-day retention window, since those are tied to the room, not solely to your account.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>If this policy changes in a way that affects how your data is handled, you will be asked to review and re-accept it before continuing to use the service.</p>
+
+    <h2>Contact</h2>
+    <p>This is a personal project. Questions can be directed to the developer via the portfolio link in the app's settings.</p>
+
+    <p style="margin-top:2rem"><a href="/">&larr; Back to Paranoid Chat</a></p>
+  </div>
+</body>
+</html>
