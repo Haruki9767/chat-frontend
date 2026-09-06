@@ -4,26 +4,70 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paranoid Chat</title>
+<script>
+  // Applies a stored theme/font choice BEFORE style.css finishes loading
+  // and BEFORE <body> paints — the only way to actually prevent a flash
+  // of the default appearance for a returning user with a saved
+  // preference. Deliberately inline and blocking (no defer/async), and
+  // deliberately placed before the stylesheet link, so it runs first.
+  // Kept tiny and dependency-free on purpose. The full theme/font
+  // picker UI and persistence logic lives in script.js — this is only
+  // the earliest-possible application of an already-saved choice.
+  (function () {
+    try {
+      var theme = localStorage.getItem('theme');
+      var font = localStorage.getItem('font');
+      if (theme && theme !== 'default') document.documentElement.setAttribute('data-theme', theme);
+      if (font && font !== 'default') document.documentElement.setAttribute('data-font', font);
+    } catch (e) { /* localStorage unavailable — fall back to default appearance */ }
+  })();
+</script>
 <link rel="stylesheet" href="style.css">
 <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 </head>
 <body>
 
-  <div id="auth-view">
+  <!-- Consent gate: blocks all use of the service until the person has
+       explicitly accepted the current Privacy Policy and Terms of
+       Service. See script.js's checkConsent()/CONSENT_VERSION for the
+       versioning mechanics — bumping CONSENT_VERSION re-prompts everyone,
+       since agreeing to an old version of these documents doesn't carry
+       forward to a materially changed one. -->
+  <div id="consent-gate" style="display:none">
+    <h1>Before you continue</h1>
+    <p class="hint">Paranoid Chat requires you to read and accept the following before using the service.</p>
+    <p>
+      <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> ·
+      <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a>
+    </p>
+    <label>
+      <input type="checkbox" id="consent-checkbox">
+      <span>I have read and agree to the Privacy Policy and Terms of Service.</span>
+    </label>
+    <button id="consent-accept-btn" class="primary" disabled>Continue</button>
+  </div>
+
+  <div id="auth-view" style="display:none">
     <h1>Paranoid Chat</h1>
     <div id="auth-mode-toggle">
       <button id="auth-login-btn" class="mode-active" type="button">Log In</button>
       <button id="auth-register-btn" type="button">Sign Up</button>
     </div>
     <input id="auth-username-input" type="text" placeholder="Username" autocomplete="username">
-    <input id="auth-password-input" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="password-field">
+      <input id="auth-password-input" type="password" placeholder="Password" autocomplete="current-password">
+      <button type="button" class="password-toggle" data-for="auth-password-input" aria-label="Show password"></button>
+    </div>
     <div id="auth-app-password-wrap" style="display:none">
-      <input id="auth-app-password-input" type="password" placeholder="App password" autocomplete="off">
+      <div class="password-field">
+        <input id="auth-app-password-input" type="password" placeholder="App password" autocomplete="off">
+        <button type="button" class="password-toggle" data-for="auth-app-password-input" aria-label="Show password"></button>
+      </div>
     </div>
     <p id="auth-hint" class="hint"></p>
     <div id="auth-hcaptcha" class="h-captcha"></div>
     <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--signal)">
-      hCaptcha site key not configured
+      hCaptcha site key not configured — set HCAPTCHA_SITE_KEY in script.js.
     </p>
     <button id="auth-submit-btn" class="primary">Log In</button>
     <div id="auth-error"></div>
@@ -33,8 +77,9 @@
   <div id="room-view" style="display:none">
     <div id="account-bar">
       Logged in as <span id="account-display"></span>
+      <button id="settings-btn">Settings</button>
       <button id="logout-btn">Log out</button>
-      <button id="delete-account-btn">Delete account</button>
+      <button id="delete-account-btn" class="danger">Delete account</button>
     </div>
 
     <div id="mode-toggle">
@@ -48,9 +93,12 @@
          Phase 7 design — the fields just don't need to change based on type. -->
     <div id="join-panel">
       <input id="room-code-input" type="text" placeholder="Room code" autocomplete="off" spellcheck="false">
-      <input id="room-password-input" type="password" placeholder="Room password (if required)">
+      <div class="password-field">
+        <input id="room-password-input" type="password" placeholder="Room password (if required)">
+        <button type="button" class="password-toggle" data-for="room-password-input" aria-label="Show password"></button>
+      </div>
       <input id="join-token-input" type="text" placeholder="Join token (optional, if invited)" autocomplete="off" spellcheck="false">
-      <button id="join-btn">Join Room</button>
+      <button id="join-btn" class="primary">Join Room</button>
     </div>
 
     <!-- Create panel: room-type selector first, since it changes which
@@ -64,13 +112,19 @@
       <p id="room-type-hint" class="hint"></p>
 
       <input id="room-name-input" type="text" placeholder="Room name (label, not unique)">
-      <input id="new-room-password-input" type="password" placeholder="Set a room password (required)">
+      <div class="password-field">
+        <input id="new-room-password-input" type="password" placeholder="Set a room password (required)">
+        <button type="button" class="password-toggle" data-for="new-room-password-input" aria-label="Show password"></button>
+      </div>
 
       <!-- Only shown for ephemeral/e2ee — the app password is re-verified
            here, at the moment of creating one of these two room types
            specifically, not at login/register (see backend Phase 3). -->
       <div id="gated-room-password-wrap" style="display:none">
-        <input id="gated-room-app-password-input" type="password" placeholder="App password (required for this room type)">
+        <div class="password-field">
+          <input id="gated-room-app-password-input" type="password" placeholder="App password (required for this room type)">
+          <button type="button" class="password-toggle" data-for="gated-room-app-password-input" aria-label="Show password"></button>
+        </div>
       </div>
 
       <button id="create-btn">Create Room</button>
@@ -105,14 +159,17 @@
 
     <div id="message-area"></div>
 
+    <div id="typing-indicator"></div>
+
     <div id="reply-preview" style="display:none">
       <div id="reply-preview-text"></div>
       <button id="reply-cancel-btn" type="button">✕</button>
     </div>
 
     <div id="input-row">
+      <div id="mention-suggestions"></div>
       <input id="message-input" type="text" placeholder="Message" autocomplete="off" maxlength="2000">
-      <button id="send-btn">Send</button>
+      <button id="send-btn" class="primary">Send</button>
     </div>
   </div>
 
@@ -137,9 +194,15 @@
 
       <section id="manage-password-section">
         <h3>Change room password</h3>
-        <input id="manage-current-password-input" type="password" placeholder="Current room password">
-        <input id="manage-new-password-input" type="password" placeholder="New room password">
-        <button id="manage-change-password-btn">Change password</button>
+        <div class="password-field">
+          <input id="manage-current-password-input" type="password" placeholder="Current room password">
+          <button type="button" class="password-toggle" data-for="manage-current-password-input" aria-label="Show password"></button>
+        </div>
+        <div class="password-field">
+          <input id="manage-new-password-input" type="password" placeholder="New room password">
+          <button type="button" class="password-toggle" data-for="manage-new-password-input" aria-label="Show password"></button>
+        </div>
+        <button id="manage-change-password-btn" class="primary">Change password</button>
         <p class="hint">Everyone currently connected will be disconnected and asked to rejoin with the new password.</p>
         <div id="manage-password-error"></div>
       </section>
@@ -152,8 +215,11 @@
       <section id="manage-tokens-section">
         <h3>Join tokens</h3>
         <div id="manage-mint-row">
-          <input id="manage-secret-input" type="password" placeholder="Room password / owner key">
-          <button id="manage-mint-token-btn">Mint new join token</button>
+          <div class="password-field">
+            <input id="manage-secret-input" type="password" placeholder="Room password / owner key">
+            <button type="button" class="password-toggle" data-for="manage-secret-input" aria-label="Show password"></button>
+          </div>
+          <button id="manage-mint-token-btn" class="primary">Mint new join token</button>
         </div>
         <div id="manage-new-token-box" style="display:none">
           <p class="hint">Save this now — it won't be shown again.</p>
@@ -164,6 +230,47 @@
       </section>
     </div>
   </div>
+
+  <div id="settings-view" style="display:none">
+    <header style="border:none;padding:0;margin-bottom:0.5rem">
+      <h2 style="margin:0">Settings</h2>
+      <button id="settings-close-btn">Close</button>
+    </header>
+
+    <section>
+      <h3>Theme</h3>
+      <div class="theme-option-grid" id="theme-option-grid"></div>
+    </section>
+
+    <section>
+      <h3>Font</h3>
+      <div class="font-option-grid" id="font-option-grid"></div>
+    </section>
+
+    <section>
+      <h3>Privacy</h3>
+      <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
+        <input type="checkbox" id="typing-indicator-toggle" style="width:auto">
+        <span>Show and share typing indicators</span>
+      </label>
+      <p class="hint">When off, you won't see when others are typing, and others won't see when you are \u2014 nothing is sent from your device either way.</p>
+    </section>
+
+    <section>
+      <h3>About the developer</h3>
+      <div id="dev-about">
+        <p>Paranoid Chat is built and maintained by a solo developer.</p>
+        <p><a href="https://lime.is-a.dev" target="_blank" rel="noopener noreferrer">lime.is-a.dev</a> &mdash; portfolio</p>
+      </div>
+    </section>
+
+    <section>
+      <h3>Legal</h3>
+      <p><a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> &middot; <a href="/terms.html" target="_blank" rel="noopener">Terms of Service</a></p>
+    </section>
+  </div>
+
+  <div id="copy-toast"></div>
 
   <script src="/config.js"></script>
   <script src="script.js"></script>
