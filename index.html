@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Paranoid Chat</title>
 <script>
+  // Applies a stored theme/font choice BEFORE style.css finishes loading
+  // and BEFORE <body> paints — the only way to actually prevent a flash
+  // of the default appearance for a returning user with a saved
+  // preference. Deliberately inline and blocking (no defer/async), and
+  // deliberately placed before the stylesheet link, so it runs first.
+  // Kept tiny and dependency-free on purpose. The full theme/font
+  // picker UI and persistence logic lives in script.js — this is only
+  // the earliest-possible application of an already-saved choice.
   (function () {
     try {
       var theme = localStorage.getItem('theme');
@@ -141,12 +149,16 @@
 
   <div id="chat-view" style="display:none">
     <header>
-      <span id="room-name-display"></span>
-      <button id="room-code-display" type="button" title="Tap to copy the full room code"></button>
-      <span id="room-type-badge"></span>
-      <span id="user-count">0 users</span>
-      <button id="manage-room-btn" style="display:none">Manage</button>
-      <button id="leave-btn">Leave</button>
+      <div id="header-identity-row">
+        <span id="room-name-display"></span>
+        <button id="room-code-display" type="button" title="Tap to copy the full room code"></button>
+        <span id="room-type-badge"></span>
+      </div>
+      <div id="header-actions-row">
+        <span id="user-count">0 users</span>
+        <button id="manage-room-btn" style="display:none">Manage</button>
+        <button id="leave-btn">Leave</button>
+      </div>
     </header>
 
     <div id="message-area"></div>
@@ -195,7 +207,8 @@
           <button type="button" class="password-toggle" data-for="manage-new-password-input" aria-label="Show password"></button>
         </div>
         <button id="manage-change-password-btn" class="primary">Change password</button>
-        <p class="hint">Everyone currently connected will be disconnected and asked to rejoin with the new password.</p>
+        <p class="hint">Everyone else currently connected will be disconnected and asked to rejoin with the new password. Your own connection stays active.</p>
+        <div id="manage-password-success"></div>
         <div id="manage-password-error"></div>
       </section>
 
