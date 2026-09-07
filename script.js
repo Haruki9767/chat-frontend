@@ -17,6 +17,12 @@ let typingUsers = new Map();
 let myTypingTimer = null;
 
 const consentGate = document.getElementById('consent-gate');
+const cookieNotice = document.getElementById('cookie-notice');
+const cookieNoticeDismiss = document.getElementById('cookie-notice-dismiss');
+const COOKIE_NOTICE_VERSION = '1';
+function showCookieNotice() { if (cookieNotice && authView?.style.display !== 'none' && localStorage.getItem('cookieNoticeVersion') !== COOKIE_NOTICE_VERSION) cookieNotice.style.display = 'flex'; }
+function hideCookieNotice() { if (cookieNotice) cookieNotice.style.display = 'none'; localStorage.setItem('cookieNoticeVersion', COOKIE_NOTICE_VERSION); }
+cookieNoticeDismiss?.addEventListener('click', hideCookieNotice);
 const consentCheckbox = document.getElementById('consent-checkbox');
 const consentAcceptBtn = document.getElementById('consent-accept-btn');
 
@@ -323,6 +329,7 @@ function showAuthView() {
 }
 
 function showRoomView() {
+  hideCookieNotice();
   authView.style.display = 'none';
   roomView.style.display = 'flex';
   chatView.style.display = 'none';
@@ -1418,6 +1425,7 @@ function hasAcceptedCurrentConsent() {
 
 function bootstrapApp() {
   tryResumeSession();
+  window.setTimeout(showCookieNotice, 0);
 }
 
 if (hasAcceptedCurrentConsent()) {

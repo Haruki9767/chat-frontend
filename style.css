@@ -734,3 +734,5 @@ button.primary .spinner { border-color: rgba(255,255,255,0.35); border-top-color
   .message { max-width: 90%; }
   body { font-size: 14.5px; }
 }
+
+.cookie-notice{position:fixed;z-index:100;left:50%;bottom:18px;transform:translateX(-50%);width:min(680px,calc(100% - 28px));display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;border:1px solid var(--line-strong);border-radius:10px;background:var(--paper-raised);color:var(--ink);box-shadow:0 16px 40px rgba(0,0,0,.18);font-size:.82rem}.cookie-notice p{margin:.25rem 0 0;color:var(--muted);line-height:1.45}.cookie-notice a{color:var(--accent);text-underline-offset:3px}.cookie-notice button{flex:0 0 auto}@media(max-width:540px){.cookie-notice{align-items:stretch;flex-direction:column;gap:10px}.cookie-notice button{width:100%}}
