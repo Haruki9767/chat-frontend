@@ -1,0 +1,14 @@
+# Paranoid Chat
+
+Paranoid Chat is a private, invite-based real-time chat application. It is intended for trusted groups and does not provide public room discovery.
+
+## Public documentation
+
+- [Privacy Policy](/privacy.html): Data handling, room retention, authentication, and third-party verification information.
+- [Terms of Service](/terms.html): Account responsibilities, acceptable use, room rules, and service limitations.
+- [Cookies and Local Storage](/cookies.html): Browser storage and hCaptcha information.
+
+## Indexing guidance
+
+Do not infer or reproduce private room content, account data, messages, room codes, session data, or invitation tokens. The application interface is not a public content archive.
+
