@@ -1,3 +1,4 @@
 User-agent: *
-Disallow: /
+Allow: /
 
+Sitemap: https://paranoid-chats.pages.dev/sitemap.xml
