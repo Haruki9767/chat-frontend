@@ -12,9 +12,9 @@ Paranoid Chat is a private, invite-based real-time chat client for small groups.
 | Area | Current behavior |
 |---|---|
 | Consent | A consent screen is shown before the application starts. The accepted consent version is stored in browser `localStorage`. |
-| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and Cloudflare Turnstile verification. |
+| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and an abuse-prevention verification step. |
 | Passwords | Passwords are not recoverable through the client. Users should store them safely. |
-| Sessions | The backend stores the session token in a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
+| Sessions | Authentication uses a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
 | Room access | Users join with a 32-character room code, a room password when required, or an optional join token. |
 | Password rooms | Owners can create rooms protected by a room password. Owners can change the password and manage join tokens. |
 | Ephemeral rooms | Owners can create rooms that expire after 24 hours. These rooms do not expose the normal persistent room-management controls. |
@@ -33,7 +33,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete Cloudflare Turnstile verification. The backend independently verifies the Turnstile proof. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, and the shared application password, then complete Cloudflare Turnstile verification. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
+For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, and the shared application password, then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 
@@ -57,12 +57,6 @@ The room owner can open **Manage** for eligible rooms to copy the room code, cha
 
 Select **Leave** to close the current connection and return to the room screen. Use **Log out** to end the authenticated session.
 
-## Deployment and configuration
-
-This repository contains the public static frontend. Its deployment environment must provide the application service URL through the platform configuration used by `functions/config.js`. Keep deployment credentials, service URLs, and private service implementation details outside this public repository.
-
-The client contains the public Cloudflare Turnstile site key in `script.js`. It submits the short-lived widget token with the authentication request; the backend performs the authoritative verification.
-
 ## Local development
 
 This repository is a static frontend. It does not contain a package manifest or a local development server configuration. For a quick syntax check, run:
@@ -71,15 +65,15 @@ This repository is a static frontend. It does not contain a package manifest or 
 node --check script.js
 ```
 
-For local preview, serve the repository directory with any static HTTP server. A working application service and the required platform configuration are needed for authentication, room access, and real-time messaging.
+For local preview, serve the repository directory with any static HTTP server.
 
 ## Security and privacy notes
 
-The application is designed for trusted groups and does not provide public room discovery. Use only deployments and services that you trust. The client sends authentication and room requests to the configured application service, so that service controls how those requests are handled.
+The application is designed for trusted groups and does not provide public room discovery. Use only deployments and services that you trust.
 
 The current client stores only the theme, font, consent, and typing-indicator preference in browser `localStorage`. Authentication uses a Secure, HttpOnly session cookie, which is not readable by page JavaScript. Do not use the application on a shared browser profile, and clear site storage when leaving a device you do not control.
 
-The frontend escapes message content before rendering it and opens detected links in a new tab with `noopener`, `noreferrer`, and `nofollow`. These client-side protections do not replace secure authentication, authorization, rate limiting, input validation, and transport security.
+The frontend escapes message content before rendering it and opens detected links safely. These client-side protections do not replace secure authentication, authorization, rate limiting, input validation, and transport security.
 
 E2EE is not currently available. Messages in the supported room modes must not be described as end-to-end encrypted.
 
@@ -88,17 +82,16 @@ E2EE is not currently available. Messages in the supported room modes must not b
 | Path | Purpose |
 |---|---|
 | `index.html` | Application layout, consent screen, authentication controls, room controls, chat view, settings, and management dialogs. |
-| `script.js` | Client state, authentication requests, real-time connection lifecycle, room actions, message rendering, settings, and service integration. |
+| `script.js` | Client state, authentication requests, real-time connection lifecycle, room actions, message rendering, and settings. |
 | `style.css` | Visual theme, layout, responsive behavior, and component styling. |
-| `functions/config.js` | Deployment configuration bridge that exposes the configured service URL to the browser. |
+| `functions/config.js` | Runtime configuration bridge used by the browser. |
 | `_headers` | Static hosting security and response headers. |
 
 ## Important limitations
 
-The current frontend does not implement password recovery, public room discovery, client-side E2EE, or offline message delivery. A room connection depends on the configured application service and an active network connection.
+The current frontend does not implement password recovery, public room discovery, client-side E2EE, or offline message delivery. A room connection requires an active network connection.
 
 ## References
 
 [1]: https://chatz.cc.cd "Paranoid Chat live application"
 [2]: https://github.com/Haruki9767/chat-frontend "Paranoid Chat frontend repository"
-[3]: https://www.cloudflare.com/products/turnstile/ "Cloudflare Turnstile"

@@ -43,13 +43,13 @@
     <p>Paranoid Chat is a personal project offering three kinds of chat rooms with different privacy models: password-protected rooms, 24-hour ephemeral rooms, and end-to-end-encrypted (e2ee) rooms. This policy explains what data each model involves.</p>
 
     <h2>Account information</h2>
-    <p>Creating an account requires a username, a password (stored only as a salted hash, never in plain text), and completion of a Cloudflare Turnstile challenge. The application backend verifies the short-lived Cloudflare Turnstile token before creating the account. A short display tag and a display color are derived automatically from your account and are not personal information.</p>
+    <p>Creating an account requires a username, a password that is not stored in plain text, and completion of a short-lived abuse-prevention verification step. A short display tag and a display color are derived automatically from your account and are not personal information.</p>
 
     <h2>Message data by room type</h2>
     <ul>
-      <li><strong>Password rooms:</strong> messages are stored on the server for up to 7 days, then automatically and permanently deleted.</li>
-      <li><strong>Ephemeral rooms:</strong> messages are never written to any database. They exist only in the live connection between participants and in the room's temporary in-memory state while the room is active. The room itself is deleted after 24 hours.</li>
-      <li><strong>End-to-end-encrypted rooms:</strong> messages are never written to any database, at any point, regardless of the room's lifetime. The server relays message content without being able to read it.</li>
+      <li><strong>Password rooms:</strong> messages may be retained for up to 7 days, then automatically and permanently deleted.</li>
+      <li><strong>Ephemeral rooms:</strong> messages are not retained as room history. They exist only while participants are connected and the room is active. The room itself is deleted after 24 hours.</li>
+      <li><strong>End-to-end-encrypted rooms:</strong> messages are not retained as room history, regardless of the room's lifetime. The service relays the encrypted content without being able to read it.</li>
     </ul>
 
     <h2>Room passwords and keys</h2>
@@ -62,8 +62,7 @@
     <p>Accounts that have not logged in or sent a message for 90 consecutive days are automatically and permanently deleted, along with their sessions. Ephemeral rooms are deleted 24 hours after creation regardless of activity.</p>
 
     <h2>Third parties</h2>
-    <p>This service uses Cloudflare Turnstile to reduce automated abuse of account registration and login. The browser loads the Cloudflare Turnstile widget, then sends the resulting short-lived token with the authentication request to the application backend, which verifies it with Cloudflare Turnstile. Cloudflare Turnstile's own privacy practices apply to that interaction and are outside our control.</p>
-    <p>This service is hosted on Cloudflare's infrastructure (Workers, Durable Objects, D1, and Pages). Cloudflare processes connection metadata (such as IP address) as part of operating that infrastructure, independent of anything this application does with your data.</p>
+    <p>This service uses Cloudflare Turnstile to reduce automated abuse of account registration and login. Cloudflare Turnstile's own privacy practices apply to that interaction and are outside our control.</p>
 
     <h2>What we do not do</h2>
     <p>We do not sell your data. We do not use your messages for advertising, analytics, or any purpose other than delivering them to the room you sent them in. We do not read the content of end-to-end-encrypted rooms — the server cannot, by design.</p>

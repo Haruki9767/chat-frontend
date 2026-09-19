@@ -28,6 +28,13 @@ for (const [file, expected] of Object.entries(pages)) {
   }
 }
 
+for (const file of Object.keys(pages)) {
+  const html = await readFile(new URL(file, root), 'utf8');
+  if (/(?:privacy|terms|cookies)(?:\.html)?[^>]*target="_blank"/i.test(html)) {
+    throw new Error(`${file}: legal links must stay in the current tab`);
+  }
+}
+
 const sitemap = await readFile(new URL('sitemap.xml', root), 'utf8');
 if (!sitemap.includes('https://chatz.cc.cd/')) throw new Error('sitemap: production homepage missing');
 if (sitemap.includes('pages.dev') || /<loc>[^<]*[?&][^<]*<\/loc>/.test(sitemap)) throw new Error('sitemap: staging or query URL found');
