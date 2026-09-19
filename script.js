@@ -1,4 +1,10 @@
 const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
+const nativeFetch = window.fetch.bind(window);
+function apiFetch(input, init = {}) {
+  const headers = new Headers(init.headers || {});
+  if (sessionToken) headers.set('X-Session-Token', sessionToken);
+  return nativeFetch(input, { ...init, headers, credentials: 'include' });
+}
 
 const CONSENT_VERSION = '1';
 
@@ -9,7 +15,7 @@ const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/ve
 let ws = null;
 let intentionalClose = false;
 let account = null;
-let sessionToken = localStorage.getItem('sessionToken') || null;
+let sessionToken = null;
 
 let currentRoom = null;
 let roomParticipants = new Set();
@@ -141,9 +147,9 @@ function resetHcaptcha() {
 async function verifyHcaptchaClientSide(token) {
   if (!token) return false;
   try {
-    const res = await fetch(HCAPTCHA_VERIFY_URL, {
+    const res = await apiFetch(HCAPTCHA_VERIFY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}) },
       body: JSON.stringify({ token }),
     });
     if (!res.ok) return false;
@@ -232,10 +238,10 @@ authSubmitBtn.addEventListener('click', async () => {
   const extraHeaders = authMode === 'register' ? { 'X-App-Password': appPassword } : {};
 
   try {
-    const res = await fetch(`${API_URL}${endpoint}`, {
+    const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, hcaptchaToken }),
     });
     const data = await res.json();
 
@@ -244,8 +250,7 @@ authSubmitBtn.addEventListener('click', async () => {
     } else if (!res.ok || !data.success) {
       authError.textContent = data.error || 'Authentication failed';
     } else {
-      sessionToken = data.sessionToken;
-      localStorage.setItem('sessionToken', sessionToken);
+      sessionToken = data.sessionToken || null;
       account = data.account;
       showRoomView();
     }
@@ -261,12 +266,10 @@ authSubmitBtn.addEventListener('click', async () => {
 
 logoutBtn.addEventListener('click', async () => {
   try {
-    await fetch(`${API_URL}/api/auth/logout`, {
+    await apiFetch(`${API_URL}/api/auth/logout`, {
       method: 'POST',
-      headers: { 'X-Session-Token': sessionToken },
     });
   } catch {}
-  localStorage.removeItem('sessionToken');
   sessionToken = null;
   account = null;
   showAuthView();
@@ -277,13 +280,11 @@ deleteAccountBtn.addEventListener('click', async () => {
     return;
   }
   try {
-    const res = await fetch(`${API_URL}/api/auth/account`, {
+    const res = await apiFetch(`${API_URL}/api/auth/account`, {
       method: 'DELETE',
-      headers: { 'X-Session-Token': sessionToken },
     });
     const data = await res.json();
     if (data.success) {
-      localStorage.removeItem('sessionToken');
       sessionToken = null;
       account = null;
       showAuthView();
@@ -296,20 +297,14 @@ deleteAccountBtn.addEventListener('click', async () => {
 });
 
 async function tryResumeSession() {
-  if (!sessionToken) {
-    showAuthView();
-    return;
-  }
   try {
-    const res = await fetch(`${API_URL}/api/auth/me`, {
-      headers: { 'X-Session-Token': sessionToken },
+    const res = await apiFetch(`${API_URL}/api/auth/me`, {
     });
     const data = await res.json();
     if (data.success) {
       account = data.account;
       showRoomView();
     } else {
-      localStorage.removeItem('sessionToken');
       sessionToken = null;
       showAuthView();
     }
@@ -422,11 +417,11 @@ async function createAndJoin() {
   setButtonLoading(createBtn, true, 'Creating\u2026');
 
   try {
-    const res = await fetch(`${API_URL}${endpoint}`, {
+    const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken,
+        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
         ...extraHeaders,
       },
       body: JSON.stringify(bodyFields),
@@ -513,11 +508,30 @@ function resetJoinBtn() {
   setButtonLoading(joinBtn, false);
 }
 
-function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
-  const params = new URLSearchParams({ session: sessionToken });
-  if (roomPassword) params.set('roomPassword', roomPassword);
-  if (joinToken) params.set('joinToken', joinToken);
+async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
+  let ticket;
+  try {
+    const ticketResponse = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}) },
+      body: JSON.stringify({ roomPassword, joinToken })
+    });
+    const ticketData = await ticketResponse.json();
+    if (!ticketResponse.ok || !ticketData.success) {
+      roomError.textContent = ticketData.error || 'Connection failed — check room code/password';
+      resetCreateBtn();
+      resetJoinBtn();
+      return;
+    }
+    ticket = ticketData.ticket;
+  } catch (error) {
+    roomError.textContent = 'Network error';
+    resetCreateBtn();
+    resetJoinBtn();
+    return;
+  }
 
+  const params = new URLSearchParams({ ticket });
   const wsUrl = API_URL.replace(/^http/, 'ws') + `/api/rooms/${roomCode}/join?${params.toString()}`;
 
   ws = new WebSocket(wsUrl);
@@ -544,7 +558,6 @@ function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinTok
   ws.onclose = (event) => {
     if (event.code === 4001) {
       ws = null;
-      localStorage.removeItem('sessionToken');
       sessionToken = null;
       account = null;
       chatView.style.display = 'none';
@@ -1164,11 +1177,11 @@ manageChangePasswordBtn.addEventListener('click', async () => {
 
   manageChangePasswordBtn.disabled = true;
   try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/password`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/password`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken,
+        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
       },
       body: JSON.stringify({ currentPassword, newPassword }),
     });
@@ -1200,11 +1213,11 @@ manageMintTokenBtn.addEventListener('click', async () => {
 
   manageMintTokenBtn.disabled = true;
   try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken,
+        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
       },
       body: JSON.stringify(body),
     });
@@ -1227,8 +1240,7 @@ manageMintTokenBtn.addEventListener('click', async () => {
 async function loadJoinTokens() {
   manageTokensList.innerHTML = 'Loading\u2026';
   try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
-      headers: { 'X-Session-Token': sessionToken },
+    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
     });
     const data = await res.json();
     if (!res.ok || !data.success) {
@@ -1295,9 +1307,8 @@ function renderJoinTokens(tokens) {
 async function revokeJoinToken(tokenId) {
   manageTokensError.textContent = '';
   try {
-    const res = await fetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens/${tokenId}`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens/${tokenId}`, {
       method: 'DELETE',
-      headers: { 'X-Session-Token': sessionToken },
     });
     const data = await res.json();
     if (!res.ok || !data.success) {

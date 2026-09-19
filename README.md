@@ -14,7 +14,7 @@ Paranoid Chat is a private, invite-based real-time chat client for small groups.
 | Consent | A consent screen is shown before the application starts. The accepted consent version is stored in browser `localStorage`. |
 | Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and hCaptcha verification. |
 | Passwords | Passwords are not recoverable through the client. Users should store them safely. |
-| Sessions | The session token is stored locally so the client can attempt to restore a login after a page reload. |
+| Sessions | The backend stores the session token in a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
 | Room access | Users join with a 32-character room code, a room password when required, or an optional join token. |
 | Password rooms | Owners can create rooms protected by a room password. Owners can change the password and manage join tokens. |
 | Ephemeral rooms | Owners can create rooms that expire after 24 hours. These rooms do not expose the normal persistent room-management controls. |
@@ -33,7 +33,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete hCaptcha verification. To create an account, switch to **Sign Up**, provide a username and password, enter the shared application password, and complete hCaptcha verification.
+For an existing account, enter the username and password and complete hCaptcha verification. The backend independently verifies the CAPTCHA proof. To create an account, switch to **Sign Up**, provide a username and password, enter the shared application password, and complete hCaptcha verification.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 
@@ -77,7 +77,7 @@ For local preview, serve the repository directory with any static HTTP server. A
 
 The application is designed for trusted groups and does not provide public room discovery. Use only deployments and services that you trust. The client sends authentication and room requests to the configured application service, so that service controls how those requests are handled.
 
-The current client stores the session token, theme, font, and typing-indicator preference in browser `localStorage`. Do not use the application on a shared browser profile, and clear site storage when leaving a device you do not control.
+The current client stores only the theme, font, consent, and typing-indicator preference in browser `localStorage`. Authentication uses a Secure, HttpOnly session cookie, which is not readable by page JavaScript. Do not use the application on a shared browser profile, and clear site storage when leaving a device you do not control.
 
 The frontend escapes message content before rendering it and opens detected links in a new tab with `noopener`, `noreferrer`, and `nofollow`. These client-side protections do not replace secure authentication, authorization, rate limiting, input validation, and transport security.
 
