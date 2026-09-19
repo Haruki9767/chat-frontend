@@ -4,9 +4,9 @@ import { constants } from 'node:fs';
 const root = new URL('.', import.meta.url);
 const pages = {
   'index.html': { canonical: 'https://chatz.cc.cd/', robots: 'index,follow' },
-  'privacy.html': { canonical: 'https://chatz.cc.cd/privacy.html', robots: 'index,follow' },
-  'terms.html': { canonical: 'https://chatz.cc.cd/terms.html', robots: 'index,follow' },
-  'cookies.html': { canonical: 'https://chatz.cc.cd/cookies.html', robots: 'index,follow' },
+  'privacy.html': { canonical: 'https://chatz.cc.cd/privacy', robots: 'index,follow' },
+  'terms.html': { canonical: 'https://chatz.cc.cd/terms', robots: 'index,follow' },
+  'cookies.html': { canonical: 'https://chatz.cc.cd/cookies', robots: 'index,follow' },
   '404.html': { canonical: 'https://chatz.cc.cd/404.html', robots: 'noindex,follow' },
 };
 
