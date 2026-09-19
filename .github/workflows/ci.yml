@@ -32,6 +32,9 @@ jobs:
       - name: Run security checks
         run: node security-check.mjs
 
+      - name: Run SEO checks
+        run: node seo-check.mjs
+
       - name: Scan tracked files for private keys
         run: |
           if git grep -n -E -- '-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----'; then

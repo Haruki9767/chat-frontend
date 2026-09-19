@@ -2,7 +2,7 @@
 
 Paranoid Chat is a private, invite-based real-time chat client for small groups. It provides account authentication, password-protected rooms, optional join tokens, ephemeral rooms, message history, replies, mentions, typing indicators, local themes, and room management.
 
-**Live application:** <https://paranoid-chats.pages.dev>
+**Live application:** <https://chatz.cc.cd>
 **Public frontend repository:** <https://github.com/Haruki9767/chat-frontend>
 
 > This project is intended for trusted groups rather than public discovery. There is no public room directory. Users need an authenticated account and the room code plus the required password or invitation token to join a room.
@@ -99,6 +99,6 @@ The current frontend does not implement password recovery, public room discovery
 
 ## References
 
-[1]: https://paranoid-chats.pages.dev "Paranoid Chat live application"
+[1]: https://chatz.cc.cd "Paranoid Chat live application"
 [2]: https://github.com/Haruki9767/chat-frontend "Paranoid Chat frontend repository"
 [3]: https://www.cloudflare.com/products/turnstile/ "Cloudflare Turnstile"
