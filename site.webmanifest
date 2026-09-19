@@ -1,0 +1,19 @@
+{
+  "name": "Paranoid Chat",
+  "short_name": "Paranoid Chat",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#1F4B3F",
+  "background_color": "#FAFAF8",
+  "display": "standalone"
+}

@@ -15,6 +15,9 @@ for (const [file, expected] of Object.entries(pages)) {
   for (const pattern of [
     /<title>[^<]+<\/title>/i,
     /<meta name="description" content="[^"]+">/i,
+    /<link rel="icon" href="\/favicon\.ico" sizes="any">/i,
+    /<link rel="apple-touch-icon" sizes="180x180" href="\/apple-touch-icon\.png">/i,
+    /<link rel="manifest" href="\/site\.webmanifest">/i,
     new RegExp(`<link rel="canonical" href="${expected.canonical.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}">`),
     new RegExp(`<meta name="robots" content="${expected.robots}">`),
   ]) {
