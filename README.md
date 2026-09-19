@@ -61,7 +61,7 @@ Select **Leave** to close the current connection and return to the room screen. 
 
 This repository contains the public static frontend. Its deployment environment must provide the application service URL through the platform configuration used by `functions/config.js`. Keep deployment credentials, service URLs, and private service implementation details outside this public repository.
 
-The client also contains the hCaptcha site key and verification endpoint in `script.js`. Production deployments should configure these values for the intended hCaptcha site and verification service.
+The client contains the public hCaptcha site key in `script.js`. It submits the short-lived widget token with the authentication request; the backend performs the authoritative verification.
 
 ## Local development
 

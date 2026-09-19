@@ -10,8 +10,6 @@ const CONSENT_VERSION = '1';
 
 const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
 
-const HCAPTCHA_VERIFY_URL = 'https://turnstile---io.lime-paranoid.workers.dev/verify';
-
 let ws = null;
 let intentionalClose = false;
 let account = null;
@@ -144,23 +142,6 @@ function resetHcaptcha() {
   try { hcaptcha.reset(); } catch {}
 }
 
-async function verifyHcaptchaClientSide(token) {
-  if (!token) return false;
-  try {
-    const res = await apiFetch(HCAPTCHA_VERIFY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}) },
-      body: JSON.stringify({ token }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data && data.ok === true;
-  } catch (err) {
-    console.error('hCaptcha verification request failed:', err);
-    return false;
-  }
-}
-
 (function initHcaptchaWidget() {
   const el = document.getElementById('auth-hcaptcha');
   const warning = document.getElementById('auth-hcaptcha-missing-warning');
@@ -224,15 +205,6 @@ authSubmitBtn.addEventListener('click', async () => {
 
   authSubmitBtn.disabled = true;
   setButtonLoading(authSubmitBtn, true);
-
-  const verified = await verifyHcaptchaClientSide(hcaptchaToken);
-  if (!verified) {
-    authError.textContent = 'hCaptcha verification failed \u2014 please try again';
-    authSubmitBtn.disabled = false;
-    setButtonLoading(authSubmitBtn, false);
-    resetHcaptcha();
-    return;
-  }
 
   const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
   const extraHeaders = authMode === 'register' ? { 'X-App-Password': appPassword } : {};
