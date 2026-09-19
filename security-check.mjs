@@ -7,6 +7,10 @@ const required = [
   ['server-verified Turnstile token submission', /turnstileToken/],
   ['short-lived join ticket flow', /\/api\/rooms\/\$\{roomCode\}\/join-ticket/],
   ['strict CSP', /Content-Security-Policy:.*frame-ancestors 'none'/s],
+  ['Turnstile teardown after auth requests', /destroyTurnstileWidget/],
+  ['Turnstile widget removal', /turnstile\.remove/],
+  ['stale WebSocket attempt tracking', /connectionAttempt/],
+  ['stale WebSocket event guard', /socket !== ws \|\| attempt !== connectionAttempt/],
 ];
 for (const [label, pattern] of required) {
   if (!pattern.test(source + '\n' + headers)) throw new Error(`Missing security control: ${label}`);

@@ -10,7 +10,7 @@ const CONSENT_VERSION = '1';
 const TURNSTILE_SITE_KEY = '0x4AAAAAAE8yZ-YgtuYmT7A1';
 
 let ws = null;
-let intentionalClose = false;
+let connectionAttempt = 0;
 let account = null;
 
 let currentRoom = null;
@@ -140,9 +140,19 @@ function getTurnstileToken() {
     return '';
   }
 }
-function resetTurnstile() {
-  if (typeof turnstile === 'undefined' || turnstileWidgetId === null) return;
-  try { turnstile.reset(turnstileWidgetId); } catch {}
+function destroyTurnstileWidget() {
+  if (typeof turnstile !== 'undefined' && turnstileWidgetId !== null) {
+    try {
+      turnstile.remove(turnstileWidgetId);
+    } catch {}
+  }
+  turnstileWidgetId = null;
+  turnstileReadyPromise = null;
+  const el = document.getElementById('auth-turnstile');
+  if (el) {
+    el.replaceChildren();
+    el.style.display = 'none';
+  }
 }
 
 function waitForTurnstileApi() {
@@ -202,6 +212,7 @@ authRegisterBtn.addEventListener('click', () => setAuthMode('register'));
 
 function setAuthMode(m) {
   authMode = m;
+  destroyTurnstileWidget();
   authError.textContent = '';
   authPasswordConfirmInput.value = '';
   authAppPasswordInput.value = '';
@@ -289,7 +300,10 @@ authSubmitBtn.addEventListener('click', async () => {
   } finally {
     authSubmitBtn.disabled = false;
     setButtonLoading(authSubmitBtn, false);
-    resetTurnstile();
+    // Turnstile tokens are single-use. Removing the widget after every
+    // request prevents a failed login/register response from causing the
+    // managed widget to immediately start another verification cycle.
+    destroyTurnstileWidget();
   }
 });
 
@@ -340,6 +354,7 @@ async function tryResumeSession() {
 }
 
 function showAuthView() {
+  destroyTurnstileWidget();
   authView.style.display = 'flex';
   roomView.style.display = 'none';
   chatView.style.display = 'none';
@@ -534,6 +549,13 @@ function resetJoinBtn() {
 }
 
 async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, joinToken }) {
+  const attempt = ++connectionAttempt;
+  const previousSocket = ws;
+  ws = null;
+  if (previousSocket && previousSocket.readyState < WebSocket.CLOSING) {
+    previousSocket.close();
+  }
+
   let ticket;
   try {
     const ticketResponse = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-ticket`, {
@@ -542,6 +564,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       body: JSON.stringify({ roomPassword, joinToken })
     });
     const ticketData = await ticketResponse.json();
+    if (attempt !== connectionAttempt) return;
     if (!ticketResponse.ok || !ticketData.success) {
       roomError.textContent = ticketData.error || 'Connection failed — check room code/password';
       resetCreateBtn();
@@ -550,6 +573,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
     }
     ticket = ticketData.ticket;
   } catch (error) {
+    if (attempt !== connectionAttempt) return;
     roomError.textContent = 'Network error';
     resetCreateBtn();
     resetJoinBtn();
@@ -559,9 +583,11 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
   const params = new URLSearchParams({ ticket });
   const wsUrl = API_URL.replace(/^http/, 'ws') + `/api/rooms/${roomCode}/join?${params.toString()}`;
 
-  ws = new WebSocket(wsUrl);
+  const socket = new WebSocket(wsUrl);
+  ws = socket;
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (socket !== ws || attempt !== connectionAttempt) return;
     resetJoinBtn();
     resetCreateBtn();
     currentRoom = { roomCode, name: roomLabel || '', roomType: roomType || 'password', isOwner: false };
@@ -572,7 +598,8 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
     roomTypeBadge.textContent = currentRoom.roomType;
   };
 
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
+    if (socket !== ws || attempt !== connectionAttempt) return;
     try {
       handleMessage(JSON.parse(event.data));
     } catch (e) {
@@ -580,9 +607,10 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
     }
   };
 
-  ws.onclose = (event) => {
+  socket.onclose = (event) => {
+    if (socket !== ws || attempt !== connectionAttempt) return;
+    ws = null;
     if (event.code === 4001) {
-      ws = null;
       account = null;
       chatView.style.display = 'none';
       showAuthView();
@@ -591,7 +619,6 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
     }
 
     if (event.code === 4002 || event.code === 4003) {
-      ws = null;
       chatView.style.display = 'none';
       manageRoomView.style.display = 'none';
       showRoomView();
@@ -601,11 +628,6 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       if (event.code === 4002 && currentRoom) {
         roomCodeInput.value = currentRoom.roomCode;
       }
-      return;
-    }
-
-    if (intentionalClose) {
-      intentionalClose = false;
       return;
     }
 
@@ -621,7 +643,9 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
     }
   };
 
-  ws.onerror = (err) => console.error('WebSocket error:', err);
+  socket.onerror = (err) => {
+    if (socket === ws && attempt === connectionAttempt) console.error('WebSocket error:', err);
+  };
 }
 
 function handleMessage(data) {
@@ -1078,7 +1102,10 @@ roomCodeDisplay.addEventListener('click', () => {
 });
 
 function leaveChat() {
-  if (ws) { intentionalClose = true; ws.close(); ws = null; }
+  connectionAttempt++;
+  const socket = ws;
+  ws = null;
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   chatView.style.display = 'none';
   manageRoomView.style.display = 'none';
   roomView.style.display = 'flex';
