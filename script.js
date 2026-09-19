@@ -8,7 +8,7 @@ function apiFetch(input, init = {}) {
 
 const CONSENT_VERSION = '1';
 
-const HCAPTCHA_SITE_KEY = '5a780a88-6cf4-45c4-8b18-4f64fd7823d0';
+const TURNSTILE_SITE_KEY = '0x4AAAAAAE8yZ-YgtuYmT7A1';
 
 let ws = null;
 let intentionalClose = false;
@@ -129,28 +129,28 @@ function colorForUserId(userId) {
   return USER_COLORS[hash % USER_COLORS.length];
 }
 
-function getHcaptchaToken() {
-  if (typeof hcaptcha === 'undefined') return '';
+function getTurnstileToken() {
+  if (typeof turnstile === 'undefined') return '';
   try {
-    return hcaptcha.getResponse() || '';
+    return turnstile.getResponse() || '';
   } catch {
     return '';
   }
 }
-function resetHcaptcha() {
-  if (typeof hcaptcha === 'undefined') return;
-  try { hcaptcha.reset(); } catch {}
+function resetTurnstile() {
+  if (typeof turnstile === 'undefined') return;
+  try { turnstile.reset(); } catch {}
 }
 
-(function initHcaptchaWidget() {
-  const el = document.getElementById('auth-hcaptcha');
-  const warning = document.getElementById('auth-hcaptcha-missing-warning');
-  if (!HCAPTCHA_SITE_KEY) {
+(function initTurnstileWidget() {
+  const el = document.getElementById('auth-turnstile');
+  const warning = document.getElementById('auth-turnstile-missing-warning');
+  if (!TURNSTILE_SITE_KEY) {
     if (warning) warning.style.display = 'block';
     if (el) el.style.display = 'none';
     return;
   }
-  if (el) el.setAttribute('data-sitekey', HCAPTCHA_SITE_KEY);
+  if (el) el.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
 })();
 
 let authMode = 'login';
@@ -180,7 +180,7 @@ authSubmitBtn.addEventListener('click', async () => {
   authError.textContent = '';
   const username = authUsernameInput.value.trim();
   const password = authPasswordInput.value;
-  const hcaptchaToken = getHcaptchaToken();
+  const turnstileToken = getTurnstileToken();
 
   if (!username || !password) {
     authError.textContent = 'Username and password required';
@@ -196,10 +196,10 @@ authSubmitBtn.addEventListener('click', async () => {
     }
   }
 
-  if (!hcaptchaToken) {
-    authError.textContent = HCAPTCHA_SITE_KEY
+  if (!turnstileToken) {
+    authError.textContent = TURNSTILE_SITE_KEY
       ? 'Please complete the captcha'
-      : 'hCaptcha is not configured (see HCAPTCHA_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
+      : 'Turnstile is not configured (see TURNSTILE_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
     return;
   }
 
@@ -213,7 +213,7 @@ authSubmitBtn.addEventListener('click', async () => {
     const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body: JSON.stringify({ username, password, hcaptchaToken }),
+      body: JSON.stringify({ username, password, turnstileToken }),
     });
     const data = await res.json();
 
@@ -232,7 +232,7 @@ authSubmitBtn.addEventListener('click', async () => {
   } finally {
     authSubmitBtn.disabled = false;
     setButtonLoading(authSubmitBtn, false);
-    resetHcaptcha();
+    resetTurnstile();
   }
 });
 

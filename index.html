@@ -6,7 +6,7 @@
 <title>Paranoid Chat</title>
 <script src="/theme-bootstrap.js"></script>
 <link rel="stylesheet" href="style.css">
-<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 
@@ -26,7 +26,7 @@
   </div>
 
   <div id="cookie-notice" class="cookie-notice" role="status" aria-label="Cookie and storage notice" style="display:none">
-    <div><strong>Cookies &amp; local storage</strong><p>We use local storage for your session, consent, and preferences. hCaptcha may use third-party storage during verification. <a href="/cookies.html" target="_blank" rel="noopener">Learn more</a>.</p></div>
+    <div><strong>Cookies &amp; local storage</strong><p>We use local storage for your session, consent, and preferences. Cloudflare Turnstile may use third-party storage during verification. <a href="/cookies.html" target="_blank" rel="noopener">Learn more</a>.</p></div>
     <button id="cookie-notice-dismiss" class="primary" type="button">Got it</button>
   </div>
   <div id="auth-view" style="display:none">
@@ -47,9 +47,9 @@
       </div>
     </div>
     <p id="auth-hint" class="hint"></p>
-    <div id="auth-hcaptcha" class="h-captcha"></div>
-    <p id="auth-hcaptcha-missing-warning" class="hint" style="display:none;color:var(--signal)">
-      hCaptcha site key not configured — set HCAPTCHA_SITE_KEY in script.js.
+    <div id="auth-turnstile" class="cf-turnstile" data-sitekey="0x4AAAAAAE8yZ-YgtuYmT7A1"></div>
+    <p id="auth-turnstile-missing-warning" class="hint" style="display:none;color:var(--signal)">
+      Turnstile site key not configured — set TURNSTILE_SITE_KEY in script.js.
     </p>
     <button id="auth-submit-btn" class="primary">Log In</button>
     <div id="auth-error"></div>

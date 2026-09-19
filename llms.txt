@@ -6,7 +6,7 @@ Paranoid Chat is a private, invite-based real-time chat application. It is inten
 
 - [Privacy Policy](/privacy.html): Data handling, room retention, authentication, and third-party verification information.
 - [Terms of Service](/terms.html): Account responsibilities, acceptable use, room rules, and service limitations.
-- [Cookies and Local Storage](/cookies.html): Browser storage and hCaptcha information.
+- [Cookies and Local Storage](/cookies.html): Browser storage and Cloudflare Turnstile information.
 
 ## Indexing guidance
 

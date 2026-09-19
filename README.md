@@ -12,7 +12,7 @@ Paranoid Chat is a private, invite-based real-time chat client for small groups.
 | Area | Current behavior |
 |---|---|
 | Consent | A consent screen is shown before the application starts. The accepted consent version is stored in browser `localStorage`. |
-| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and hCaptcha verification. |
+| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and Cloudflare Turnstile verification. |
 | Passwords | Passwords are not recoverable through the client. Users should store them safely. |
 | Sessions | The backend stores the session token in a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
 | Room access | Users join with a 32-character room code, a room password when required, or an optional join token. |
@@ -33,7 +33,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete hCaptcha verification. The backend independently verifies the CAPTCHA proof. To create an account, switch to **Sign Up**, provide a username and password, enter the shared application password, and complete hCaptcha verification.
+For an existing account, enter the username and password and complete Cloudflare Turnstile verification. The backend independently verifies the Turnstile proof. To create an account, switch to **Sign Up**, provide a username and password, enter the shared application password, and complete Cloudflare Turnstile verification.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 
@@ -61,7 +61,7 @@ Select **Leave** to close the current connection and return to the room screen. 
 
 This repository contains the public static frontend. Its deployment environment must provide the application service URL through the platform configuration used by `functions/config.js`. Keep deployment credentials, service URLs, and private service implementation details outside this public repository.
 
-The client contains the public hCaptcha site key in `script.js`. It submits the short-lived widget token with the authentication request; the backend performs the authoritative verification.
+The client contains the public Cloudflare Turnstile site key in `script.js`. It submits the short-lived widget token with the authentication request; the backend performs the authoritative verification.
 
 ## Local development
 
@@ -101,4 +101,4 @@ The current frontend does not implement password recovery, public room discovery
 
 [1]: https://paranoid-chats.pages.dev "Paranoid Chat live application"
 [2]: https://github.com/Haruki9767/chat-frontend "Paranoid Chat frontend repository"
-[3]: https://www.hcaptcha.com/ "hCaptcha"
+[3]: https://www.cloudflare.com/products/turnstile/ "Cloudflare Turnstile"

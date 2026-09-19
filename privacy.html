@@ -25,7 +25,7 @@
     <p>Paranoid Chat is a personal project offering three kinds of chat rooms with different privacy models: password-protected rooms, 24-hour ephemeral rooms, and end-to-end-encrypted (e2ee) rooms. This policy explains what data each model involves.</p>
 
     <h2>Account information</h2>
-    <p>Creating an account requires a username, a password (stored only as a salted hash, never in plain text), and completion of an hCaptcha challenge. The application backend verifies the short-lived hCaptcha token before creating the account. A short display tag and a display color are derived automatically from your account and are not personal information.</p>
+    <p>Creating an account requires a username, a password (stored only as a salted hash, never in plain text), and completion of a Cloudflare Turnstile challenge. The application backend verifies the short-lived Cloudflare Turnstile token before creating the account. A short display tag and a display color are derived automatically from your account and are not personal information.</p>
 
     <h2>Message data by room type</h2>
     <ul>
@@ -44,7 +44,7 @@
     <p>Accounts that have not logged in or sent a message for 90 consecutive days are automatically and permanently deleted, along with their sessions. Ephemeral rooms are deleted 24 hours after creation regardless of activity.</p>
 
     <h2>Third parties</h2>
-    <p>This service uses hCaptcha to reduce automated abuse of account registration and login. The browser loads the hCaptcha widget, then sends the resulting short-lived token with the authentication request to the application backend, which verifies it with hCaptcha. hCaptcha's own privacy practices apply to that interaction and are outside our control.</p>
+    <p>This service uses Cloudflare Turnstile to reduce automated abuse of account registration and login. The browser loads the Cloudflare Turnstile widget, then sends the resulting short-lived token with the authentication request to the application backend, which verifies it with Cloudflare Turnstile. Cloudflare Turnstile's own privacy practices apply to that interaction and are outside our control.</p>
     <p>This service is hosted on Cloudflare's infrastructure (Workers, Durable Objects, D1, and Pages). Cloudflare processes connection metadata (such as IP address) as part of operating that infrastructure, independent of anything this application does with your data.</p>
 
     <h2>What we do not do</h2>
