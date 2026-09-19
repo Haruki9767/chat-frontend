@@ -28,3 +28,13 @@ jobs:
           node --check script.js
           node --check functions/config.js
           node --check theme-bootstrap.js
+
+      - name: Run security checks
+        run: node security-check.mjs
+
+      - name: Scan tracked files for private keys
+        run: |
+          if git grep -n -E -- '-----BEGIN (RSA|OPENSSH|EC) PRIVATE KEY-----'; then
+            echo 'Private key material must not be committed.'
+            exit 1
+          fi

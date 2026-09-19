@@ -2,7 +2,6 @@ const API_URL = window.BACKEND_URL || 'https://chat.lime-paranoid.workers.dev';
 const nativeFetch = window.fetch.bind(window);
 function apiFetch(input, init = {}) {
   const headers = new Headers(init.headers || {});
-  if (sessionToken) headers.set('X-Session-Token', sessionToken);
   return nativeFetch(input, { ...init, headers, credentials: 'include' });
 }
 
@@ -13,7 +12,6 @@ const TURNSTILE_SITE_KEY = '0x4AAAAAAE8yZ-YgtuYmT7A1';
 let ws = null;
 let intentionalClose = false;
 let account = null;
-let sessionToken = null;
 
 let currentRoom = null;
 let roomParticipants = new Set();
@@ -282,7 +280,6 @@ authSubmitBtn.addEventListener('click', async () => {
     } else if (!res.ok || !data.success) {
       authError.textContent = data.error || 'Authentication failed';
     } else {
-      sessionToken = data.sessionToken || null;
       account = data.account;
       showRoomView();
     }
@@ -302,7 +299,6 @@ logoutBtn.addEventListener('click', async () => {
       method: 'POST',
     });
   } catch {}
-  sessionToken = null;
   account = null;
   showAuthView();
 });
@@ -317,7 +313,6 @@ deleteAccountBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.success) {
-      sessionToken = null;
       account = null;
       showAuthView();
     } else {
@@ -337,7 +332,6 @@ async function tryResumeSession() {
       account = data.account;
       showRoomView();
     } else {
-      sessionToken = null;
       showAuthView();
     }
   } catch {
@@ -453,7 +447,6 @@ async function createAndJoin() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
         ...extraHeaders,
       },
       body: JSON.stringify(bodyFields),
@@ -545,7 +538,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
   try {
     const ticketResponse = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-ticket`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}) },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomPassword, joinToken })
     });
     const ticketData = await ticketResponse.json();
@@ -590,7 +583,6 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
   ws.onclose = (event) => {
     if (event.code === 4001) {
       ws = null;
-      sessionToken = null;
       account = null;
       chatView.style.display = 'none';
       showAuthView();
@@ -1213,7 +1205,6 @@ manageChangePasswordBtn.addEventListener('click', async () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
       },
       body: JSON.stringify({ currentPassword, newPassword }),
     });
@@ -1249,7 +1240,6 @@ manageMintTokenBtn.addEventListener('click', async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(sessionToken ? { 'X-Session-Token': sessionToken } : {}),
       },
       body: JSON.stringify(body),
     });
