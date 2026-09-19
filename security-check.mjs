@@ -14,6 +14,7 @@ for (const [label, pattern] of required) {
 const forbidden = [
   ['JavaScript session bearer state', /sessionToken/],
   ['JavaScript session bearer header', /X-Session-Token/],
+  ['Turnstile auto-submit retry', /authSubmitBtn\.click\(\)/],
   ['private key material', /-----BEGIN (?:RSA|OPENSSH|EC) PRIVATE KEY-----/],
 ];
 for (const [label, pattern] of forbidden) {

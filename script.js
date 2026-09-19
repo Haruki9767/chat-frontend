@@ -177,9 +177,9 @@ async function ensureTurnstileWidget() {
         turnstileWidgetId = turnstile.render(el, {
           sitekey: TURNSTILE_SITE_KEY,
           action: 'auth',
-          callback: () => {
-            if (!authSubmitBtn.disabled) authSubmitBtn.click();
-          },
+          // The token is consumed only by an explicit Login/Sign Up click.
+          // Never auto-submit from the Turnstile callback: a failed request
+          // must not trigger another verification or authentication attempt.
         });
         return true;
       } catch (error) {
