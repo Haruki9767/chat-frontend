@@ -129,29 +129,69 @@ function colorForUserId(userId) {
   return USER_COLORS[hash % USER_COLORS.length];
 }
 
+let turnstileWidgetId = null;
+let turnstileReadyPromise = null;
+
 function getTurnstileToken() {
-  if (typeof turnstile === 'undefined') return '';
+  if (typeof turnstile === 'undefined' || turnstileWidgetId === null) return '';
   try {
-    return turnstile.getResponse() || '';
+    return turnstile.getResponse(turnstileWidgetId) || '';
   } catch {
     return '';
   }
 }
 function resetTurnstile() {
-  if (typeof turnstile === 'undefined') return;
-  try { turnstile.reset(); } catch {}
+  if (typeof turnstile === 'undefined' || turnstileWidgetId === null) return;
+  try { turnstile.reset(turnstileWidgetId); } catch {}
 }
 
-(function initTurnstileWidget() {
+function waitForTurnstileApi() {
+  if (typeof turnstile !== 'undefined') return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      if (typeof turnstile !== 'undefined') {
+        clearInterval(timer);
+        resolve(true);
+      } else if (Date.now() - startedAt >= 10000) {
+        clearInterval(timer);
+        resolve(false);
+      }
+    }, 50);
+  });
+}
+
+async function ensureTurnstileWidget() {
+  if (turnstileWidgetId !== null) return true;
   const el = document.getElementById('auth-turnstile');
   const warning = document.getElementById('auth-turnstile-missing-warning');
-  if (!TURNSTILE_SITE_KEY) {
+  if (!TURNSTILE_SITE_KEY || !el) {
     if (warning) warning.style.display = 'block';
-    if (el) el.style.display = 'none';
-    return;
+    return false;
   }
-  if (el) el.setAttribute('data-sitekey', TURNSTILE_SITE_KEY);
-})();
+  if (!turnstileReadyPromise) {
+    el.style.display = 'block';
+    turnstileReadyPromise = waitForTurnstileApi().then((available) => {
+      if (!available || typeof turnstile === 'undefined') return false;
+      try {
+        turnstileWidgetId = turnstile.render(el, {
+          sitekey: TURNSTILE_SITE_KEY,
+          action: 'auth',
+        });
+        return true;
+      } catch (error) {
+        console.error('Turnstile widget failed to load:', error);
+        return false;
+      }
+    });
+  }
+  const ready = await turnstileReadyPromise;
+  if (!ready) {
+    if (warning) warning.style.display = 'block';
+    el.style.display = 'none';
+  }
+  return ready;
+}
 
 let authMode = 'login';
 authLoginBtn.addEventListener('click', () => setAuthMode('login'));
@@ -180,7 +220,6 @@ authSubmitBtn.addEventListener('click', async () => {
   authError.textContent = '';
   const username = authUsernameInput.value.trim();
   const password = authPasswordInput.value;
-  const turnstileToken = getTurnstileToken();
 
   if (!username || !password) {
     authError.textContent = 'Username and password required';
@@ -196,9 +235,18 @@ authSubmitBtn.addEventListener('click', async () => {
     }
   }
 
+  if (turnstileWidgetId === null) {
+    const widgetReady = await ensureTurnstileWidget();
+    authError.textContent = widgetReady
+      ? 'Please complete the Turnstile verification, then click again.'
+      : 'Turnstile could not be loaded. Please try again.';
+    return;
+  }
+
+  const turnstileToken = getTurnstileToken();
   if (!turnstileToken) {
     authError.textContent = TURNSTILE_SITE_KEY
-      ? 'Please complete the captcha'
+      ? 'Please complete the Turnstile verification'
       : 'Turnstile is not configured (see TURNSTILE_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
     return;
   }
