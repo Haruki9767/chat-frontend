@@ -49,6 +49,8 @@ const authLoginBtn = document.getElementById('auth-login-btn');
 const authRegisterBtn = document.getElementById('auth-register-btn');
 const authUsernameInput = document.getElementById('auth-username-input');
 const authPasswordInput = document.getElementById('auth-password-input');
+const authPasswordConfirmWrap = document.getElementById('auth-password-confirm-wrap');
+const authPasswordConfirmInput = document.getElementById('auth-password-confirm-input');
 const authAppPasswordWrap = document.getElementById('auth-app-password-wrap');
 const authAppPasswordInput = document.getElementById('auth-app-password-input');
 const authHint = document.getElementById('auth-hint');
@@ -200,18 +202,21 @@ authRegisterBtn.addEventListener('click', () => setAuthMode('register'));
 function setAuthMode(m) {
   authMode = m;
   authError.textContent = '';
+  authPasswordConfirmInput.value = '';
   authAppPasswordInput.value = '';
   if (m === 'login') {
     authLoginBtn.classList.add('mode-active');
     authRegisterBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Log In';
     authHint.textContent = '';
+    authPasswordConfirmWrap.style.display = 'none';
     authAppPasswordWrap.style.display = 'none';
   } else {
     authRegisterBtn.classList.add('mode-active');
     authLoginBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Sign Up';
     authHint.textContent = 'Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
+    authPasswordConfirmWrap.style.display = 'flex';
     authAppPasswordWrap.style.display = 'block';
   }
 }
@@ -220,9 +225,15 @@ authSubmitBtn.addEventListener('click', async () => {
   authError.textContent = '';
   const username = authUsernameInput.value.trim();
   const password = authPasswordInput.value;
+  const passwordConfirmation = authPasswordConfirmInput.value;
 
   if (!username || !password) {
     authError.textContent = 'Username and password required';
+    return;
+  }
+
+  if (authMode === 'register' && password !== passwordConfirmation) {
+    authError.textContent = 'Passwords do not match';
     return;
   }
 
@@ -237,9 +248,7 @@ authSubmitBtn.addEventListener('click', async () => {
 
   if (turnstileWidgetId === null) {
     const widgetReady = await ensureTurnstileWidget();
-    authError.textContent = widgetReady
-      ? 'Please complete the Turnstile verification, then click again.'
-      : 'Turnstile could not be loaded. Please try again.';
+    if (!widgetReady) authError.textContent = 'Turnstile could not be loaded. Please try again.';
     return;
   }
 
@@ -261,7 +270,7 @@ authSubmitBtn.addEventListener('click', async () => {
     const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body: JSON.stringify({ username, password, turnstileToken }),
+      body: JSON.stringify({ username, password, passwordConfirmation, turnstileToken }),
     });
     const data = await res.json();
 
