@@ -133,6 +133,8 @@ function colorForUserId(userId) {
 
 let turnstileWidgetId = null;
 let turnstileReadyPromise = null;
+let authVerificationRequested = false;
+let authSubmissionInFlight = false;
 
 function getTurnstileToken() {
   if (typeof turnstile === 'undefined' || turnstileWidgetId === null) return '';
@@ -150,6 +152,7 @@ function destroyTurnstileWidget() {
   }
   turnstileWidgetId = null;
   turnstileReadyPromise = null;
+  authVerificationRequested = false;
   const el = document.getElementById('auth-turnstile');
   if (el) {
     el.replaceChildren();
@@ -189,9 +192,12 @@ async function ensureTurnstileWidget() {
         turnstileWidgetId = turnstile.render(el, {
           sitekey: TURNSTILE_SITE_KEY,
           action: 'auth',
-          // The token is consumed only by an explicit Login/Sign Up click.
-          // Never auto-submit from the Turnstile callback: a failed request
-          // must not trigger another verification or authentication attempt.
+          callback: () => {
+            // Only auto-submit after the user has explicitly clicked Log In
+            // or Sign Up. A failed request destroys the widget and clears this
+            // flag, so the user must click again before another request.
+            if (authVerificationRequested) submitAuth();
+          },
         });
         return true;
       } catch (error) {
@@ -238,7 +244,8 @@ function setAuthMode(m) {
   }
 }
 
-authSubmitBtn.addEventListener('click', async () => {
+async function submitAuth() {
+  if (authSubmissionInFlight) return;
   authError.textContent = '';
   const username = authUsernameInput.value.trim();
   const password = authPasswordInput.value;
@@ -269,8 +276,12 @@ authSubmitBtn.addEventListener('click', async () => {
   }
 
   if (turnstileWidgetId === null) {
+    authVerificationRequested = true;
     const widgetReady = await ensureTurnstileWidget();
-    if (!widgetReady) authError.textContent = 'Turnstile could not be loaded. Please try again.';
+    if (!widgetReady) {
+      authVerificationRequested = false;
+      authError.textContent = 'Turnstile could not be loaded. Please try again.';
+    }
     return;
   }
 
@@ -278,10 +289,12 @@ authSubmitBtn.addEventListener('click', async () => {
   if (!turnstileToken) {
     authError.textContent = TURNSTILE_SITE_KEY
       ? 'Please complete the Turnstile verification'
-      : 'Turnstile is not configured (see TURNSTILE_SITE_KEY in script.js) \u2014 login/register cannot succeed until it is';
+      : 'Turnstile is not configured (see TURNSTILE_SITE_KEY in script.js) — login/register cannot succeed until it is';
     return;
   }
 
+  authVerificationRequested = false;
+  authSubmissionInFlight = true;
   authSubmitBtn.disabled = true;
   setButtonLoading(authSubmitBtn, true);
 
@@ -308,6 +321,7 @@ authSubmitBtn.addEventListener('click', async () => {
     console.error('Auth error:', err);
     authError.textContent = 'Network error';
   } finally {
+    authSubmissionInFlight = false;
     authSubmitBtn.disabled = false;
     setButtonLoading(authSubmitBtn, false);
     // Turnstile tokens are single-use. Removing the widget after every
@@ -315,7 +329,9 @@ authSubmitBtn.addEventListener('click', async () => {
     // managed widget to immediately start another verification cycle.
     destroyTurnstileWidget();
   }
-});
+}
+
+authSubmitBtn.addEventListener('click', submitAuth);
 
 logoutBtn.addEventListener('click', async () => {
   try {
