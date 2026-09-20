@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Handlee&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Lobster&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
   --ink: #14161A;
@@ -71,6 +71,16 @@ html[data-font="classic-serif"] {
 html[data-font="grotesk"] {
   --serif: 'Space Grotesk', -apple-system, sans-serif;
   --sans: 'Space Grotesk', -apple-system, sans-serif;
+}
+
+html[data-font="lobster"] {
+  --serif: 'Lobster', cursive;
+  --sans: 'Lobster', cursive;
+}
+
+html[data-font="handlee"] {
+  --serif: 'Handlee', cursive;
+  --sans: 'Handlee', cursive;
 }
 
 * { box-sizing: border-box; }

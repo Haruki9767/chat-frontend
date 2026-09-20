@@ -1390,6 +1390,8 @@ const FONTS = [
   { id: 'mono', label: 'Monospace' },
   { id: 'classic-serif', label: 'Source Serif' },
   { id: 'grotesk', label: 'Space Grotesk' },
+  { id: 'lobster', label: 'Lobster' },
+  { id: 'handlee', label: 'Handlee' },
 ];
 
 function applyTheme(themeId) {
