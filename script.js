@@ -5,7 +5,7 @@ function apiFetch(input, init = {}) {
   return nativeFetch(input, { ...init, headers, credentials: 'include' });
 }
 
-const CONSENT_VERSION = '1';
+const CONSENT_VERSION = '2';
 
 const TURNSTILE_SITE_KEY = '0x4AAAAAAE8yZ-YgtuYmT7A1';
 
@@ -249,7 +249,7 @@ function setAuthMode(m) {
     authRegisterBtn.classList.add('mode-active');
     authLoginBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Sign Up';
-    authHint.textContent = 'Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
+    authHint.textContent = '18+ only. Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
     authPasswordConfirmWrap.style.display = 'flex';
     authAppPasswordWrap.style.display = 'block';
     authAgeWrap.style.display = 'flex';
@@ -274,7 +274,7 @@ async function submitAuth() {
   }
 
   if (authMode === 'register' && !authAgeCheckbox.checked) {
-    authError.textContent = 'You must confirm that you are at least 13 years old';
+    authError.textContent = 'You must confirm that you are at least 18 years old';
     return;
   }
 
