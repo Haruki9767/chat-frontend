@@ -17,6 +17,7 @@ let currentRoom = null;
 let roomParticipants = new Set();
 let typingUsers = new Map();
 let myTypingTimer = null;
+let managementGeneration = 0;
 
 const consentGate = document.getElementById('consent-gate');
 const cookieNotice = document.getElementById('cookie-notice');
@@ -346,10 +347,18 @@ authSubmitBtn.addEventListener('click', submitAuth);
 
 logoutBtn.addEventListener('click', async () => {
   try {
-    await apiFetch(`${API_URL}/api/auth/logout`, {
+    const res = await apiFetch(`${API_URL}/api/auth/logout`, {
       method: 'POST',
     });
-  } catch {}
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && res.status !== 401) {
+      alert(data.error || 'Logout failed. Your server session may still be active.');
+      return;
+    }
+  } catch {
+    alert('Network error while logging out. Your server session may still be active.');
+    return;
+  }
   account = null;
   showAuthView();
 });
@@ -655,13 +664,15 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       return;
     }
 
-    if (event.code === 4002 || event.code === 4003) {
+    if (event.code === 4002 || event.code === 4003 || event.code === 4004) {
       chatView.style.display = 'none';
       manageRoomView.style.display = 'none';
       showRoomView();
       roomError.textContent = event.code === 4002
-        ? 'This room\u2019s password was changed \u2014 enter the new password to rejoin.'
-        : 'This room has expired.';
+        ? 'This room’s password was changed — enter the new password to rejoin.'
+        : event.code === 4003
+          ? 'This room has expired.'
+          : 'This room was deleted.';
       if (event.code === 4002 && currentRoom) {
         roomCodeInput.value = currentRoom.roomCode;
       }
@@ -1140,6 +1151,7 @@ roomCodeDisplay.addEventListener('click', () => {
 
 function leaveChat() {
   connectionAttempt++;
+  managementGeneration++;
   const socket = ws;
   ws = null;
   if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
@@ -1147,6 +1159,10 @@ function leaveChat() {
   manageRoomView.style.display = 'none';
   roomView.style.display = 'flex';
   messageArea.innerHTML = '';
+  replyingTo = null;
+  replyPreview.style.display = 'none';
+  lastRenderedTimestamp = null;
+  lastRenderedSender = null;
   userCount.textContent = '0 users';
   manageRoomBtn.style.display = 'none';
   currentRoom = null;
@@ -1228,6 +1244,9 @@ manageCloseBtn.addEventListener('click', () => {
 });
 
 function openManageRoom() {
+  if (!currentRoom) return;
+  const roomCode = currentRoom.roomCode;
+  const generation = ++managementGeneration;
   chatView.style.display = 'none';
   manageRoomView.style.display = 'flex';
   managePasswordError.textContent = '';
@@ -1245,7 +1264,7 @@ function openManageRoom() {
   manageE2eeKeySection.style.display = isE2ee ? 'flex' : 'none';
   manageSecretInput.placeholder = isE2ee ? 'Owner key' : 'Room password';
 
-  loadJoinTokens();
+  loadJoinTokens(roomCode, generation);
 }
 
 manageRoomCodeCopyBtn.addEventListener('click', () => {
@@ -1258,6 +1277,9 @@ manageChangePasswordBtn.addEventListener('click', async () => {
   managePasswordSuccess.textContent = '';
   const currentPassword = manageCurrentPasswordInput.value;
   const newPassword = manageNewPasswordInput.value;
+  const roomCode = currentRoom?.roomCode;
+  const generation = managementGeneration;
+  if (!roomCode) return;
   if (!currentPassword || !newPassword || newPassword.length < 4) {
     managePasswordError.textContent = 'Both fields required; new password min 4 characters';
     return;
@@ -1265,7 +1287,7 @@ manageChangePasswordBtn.addEventListener('click', async () => {
 
   manageChangePasswordBtn.disabled = true;
   try {
-    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/password`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${roomCode}/password`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -1273,6 +1295,7 @@ manageChangePasswordBtn.addEventListener('click', async () => {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
     const data = await res.json();
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     if (!res.ok || !data.success) {
       managePasswordError.textContent = data.error || 'Failed to change password';
       return;
@@ -1281,6 +1304,7 @@ manageChangePasswordBtn.addEventListener('click', async () => {
     manageNewPasswordInput.value = '';
     managePasswordSuccess.textContent = 'Password changed. Other participants have been disconnected and must rejoin with the new password.';
   } catch (err) {
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     managePasswordError.textContent = 'Network error';
   } finally {
     manageChangePasswordBtn.disabled = false;
@@ -1290,6 +1314,9 @@ manageChangePasswordBtn.addEventListener('click', async () => {
 manageMintTokenBtn.addEventListener('click', async () => {
   manageTokensError.textContent = '';
   const secret = manageSecretInput.value;
+  const roomCode = currentRoom?.roomCode;
+  const generation = managementGeneration;
+  if (!roomCode) return;
   if (!secret) {
     manageTokensError.textContent = 'Enter the room password / owner key first';
     return;
@@ -1300,7 +1327,7 @@ manageMintTokenBtn.addEventListener('click', async () => {
 
   manageMintTokenBtn.disabled = true;
   try {
-    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-tokens`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1308,6 +1335,7 @@ manageMintTokenBtn.addEventListener('click', async () => {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     if (!res.ok || !data.success) {
       manageTokensError.textContent = data.error || 'Failed to mint join token';
       return;
@@ -1315,20 +1343,23 @@ manageMintTokenBtn.addEventListener('click', async () => {
     manageNewTokenValue.textContent = data.token;
     manageNewTokenBox.style.display = 'block';
     manageSecretInput.value = '';
-    loadJoinTokens();
+    loadJoinTokens(roomCode, generation);
   } catch (err) {
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     manageTokensError.textContent = 'Network error';
   } finally {
     manageMintTokenBtn.disabled = false;
   }
 });
 
-async function loadJoinTokens() {
-  manageTokensList.innerHTML = 'Loading\u2026';
+async function loadJoinTokens(roomCode = currentRoom?.roomCode, generation = managementGeneration) {
+  if (!roomCode) return;
+  manageTokensList.innerHTML = 'Loading…';
   try {
-    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-tokens`, {
     });
     const data = await res.json();
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     if (!res.ok || !data.success) {
       manageTokensList.innerHTML = '';
       manageTokensError.textContent = data.error || 'Failed to load join tokens';
@@ -1336,6 +1367,7 @@ async function loadJoinTokens() {
     }
     renderJoinTokens(data.tokens);
   } catch (err) {
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     manageTokensList.innerHTML = '';
     manageTokensError.textContent = 'Network error loading join tokens';
   }
@@ -1392,17 +1424,22 @@ function renderJoinTokens(tokens) {
 
 async function revokeJoinToken(tokenId) {
   manageTokensError.textContent = '';
+  const roomCode = currentRoom?.roomCode;
+  const generation = managementGeneration;
+  if (!roomCode) return;
   try {
-    const res = await apiFetch(`${API_URL}/api/rooms/${currentRoom.roomCode}/join-tokens/${tokenId}`, {
+    const res = await apiFetch(`${API_URL}/api/rooms/${roomCode}/join-tokens/${tokenId}`, {
       method: 'DELETE',
     });
     const data = await res.json();
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     if (!res.ok || !data.success) {
       manageTokensError.textContent = data.error || 'Failed to revoke token';
       return;
     }
-    loadJoinTokens();
+    loadJoinTokens(roomCode, generation);
   } catch (err) {
+    if (generation !== managementGeneration || currentRoom?.roomCode !== roomCode) return;
     manageTokensError.textContent = 'Network error';
   }
 }

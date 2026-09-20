@@ -12,7 +12,7 @@ Paranoid Chat is a private, invite-based real-time chat client for small groups.
 | Area | Current behavior |
 |---|---|
 | Consent | A consent screen is shown before the application starts. The accepted consent version is stored in browser `localStorage`. |
-| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password, confirmation that the user is at least 13, and an abuse-prevention verification step. |
+| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password, confirmation that the user is at least 18, and an abuse-prevention verification step. |
 | Passwords | Passwords are not recoverable through the client. Users should store them safely. |
 | Sessions | Authentication uses a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
 | Room access | Users join with a 32-character room code, a room password when required, or an optional join token. |
@@ -34,7 +34,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, the shared application password, and confirm that you are at least 13 years old; then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
+For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, the shared application password, and confirm that you are at least 18 years old; then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 
@@ -91,6 +91,8 @@ E2EE is not currently available. Messages in the supported room modes must not b
 ## Important limitations
 
 The current frontend does not implement password recovery, public room discovery, client-side E2EE, or offline message delivery. A room connection requires an active network connection.
+
+When configuring `BACKEND_URL` in Cloudflare Pages, use an HTTPS `*.workers.dev` origin. The static CSP permits approved Cloudflare Worker origins and rejects unsupported runtime values rather than emitting a URL that the browser would block.
 
 ## References
 
