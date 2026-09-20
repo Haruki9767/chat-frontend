@@ -136,6 +136,12 @@ let turnstileReadyPromise = null;
 let authVerificationRequested = false;
 let authSubmissionInFlight = false;
 
+function stopAuthVerification(message = '') {
+  authVerificationRequested = false;
+  if (message) authError.textContent = message;
+  destroyTurnstileWidget();
+}
+
 function getTurnstileToken() {
   if (typeof turnstile === 'undefined' || turnstileWidgetId === null) return '';
   try {
@@ -192,11 +198,17 @@ async function ensureTurnstileWidget() {
         turnstileWidgetId = turnstile.render(el, {
           sitekey: TURNSTILE_SITE_KEY,
           action: 'auth',
-          callback: () => {
+          callback: (token) => {
             // Only auto-submit after the user has explicitly clicked Log In
             // or Sign Up. A failed request destroys the widget and clears this
             // flag, so the user must click again before another request.
-            if (authVerificationRequested) submitAuth();
+            if (authVerificationRequested && token) void submitAuth();
+          },
+          'expired-callback': () => {
+            stopAuthVerification('Verification expired. Please click again to retry.');
+          },
+          'error-callback': () => {
+            stopAuthVerification('Verification failed. Please click again to retry.');
           },
         });
         return true;
@@ -279,8 +291,7 @@ async function submitAuth() {
     authVerificationRequested = true;
     const widgetReady = await ensureTurnstileWidget();
     if (!widgetReady) {
-      authVerificationRequested = false;
-      authError.textContent = 'Turnstile could not be loaded. Please try again.';
+      stopAuthVerification('Turnstile could not be loaded. Please try again.');
     }
     return;
   }
@@ -327,7 +338,7 @@ async function submitAuth() {
     // Turnstile tokens are single-use. Removing the widget after every
     // request prevents a failed login/register response from causing the
     // managed widget to immediately start another verification cycle.
-    destroyTurnstileWidget();
+    stopAuthVerification();
   }
 }
 
@@ -1406,8 +1417,8 @@ const FONTS = [
   { id: 'mono', label: 'Monospace' },
   { id: 'classic-serif', label: 'Source Serif' },
   { id: 'grotesk', label: 'Space Grotesk' },
-  { id: 'lobster', label: 'Lobster' },
-  { id: 'handlee', label: 'Handlee' },
+  { id: 'lobster', label: 'Lobster', fontFamily: 'Lobster, cursive' },
+  { id: 'handlee', label: 'Handlee', fontFamily: 'Handlee, cursive' },
 ];
 
 function applyTheme(themeId) {
@@ -1450,6 +1461,8 @@ function renderSettingsOptions() {
     chip.type = 'button';
     chip.className = 'option-chip' + (f.id === currentFont ? ' active' : '');
     chip.textContent = f.label;
+    chip.style.fontFamily = f.fontFamily || '';
+    chip.setAttribute('aria-pressed', f.id === currentFont ? 'true' : 'false');
     chip.addEventListener('click', () => applyFont(f.id));
     fontOptionGrid.appendChild(chip);
   });
