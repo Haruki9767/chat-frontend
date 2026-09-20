@@ -11,6 +11,8 @@ const required = [
   ['Turnstile widget removal', /turnstile\.remove/],
   ['stale WebSocket attempt tracking', /connectionAttempt/],
   ['stale WebSocket event guard', /socket !== ws \|\| attempt !== connectionAttempt/],
+  ['authorization-expiry WebSocket handling', /event\.code === 4005/],
+  ['authorization-expiry keeps the account session', /Your room access expired — please rejoin\./],
 ];
 for (const [label, pattern] of required) {
   if (!pattern.test(source + '\n' + headers)) throw new Error(`Missing security control: ${label}`);

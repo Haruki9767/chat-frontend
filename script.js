@@ -664,6 +664,15 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       return;
     }
 
+    if (event.code === 4005) {
+      chatView.style.display = 'none';
+      manageRoomView.style.display = 'none';
+      showRoomView();
+      roomError.textContent = 'Your room access expired — please rejoin.';
+      if (currentRoom) roomCodeInput.value = currentRoom.roomCode;
+      return;
+    }
+
     if (event.code === 4002 || event.code === 4003 || event.code === 4004) {
       chatView.style.display = 'none';
       manageRoomView.style.display = 'none';
