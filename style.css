@@ -147,6 +147,20 @@ input {
 input:hover { border-color: var(--line-strong); }
 input:focus { border-color: var(--accent); }
 
+.auth-age-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.auth-age-wrap input {
+  width: auto;
+  margin-top: 0.25rem;
+  flex: 0 0 auto;
+}
+
 label.field-label {
   display: block;
   font-size: 0.72rem;

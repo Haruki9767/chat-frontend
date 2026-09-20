@@ -12,12 +12,13 @@ Paranoid Chat is a private, invite-based real-time chat client for small groups.
 | Area | Current behavior |
 |---|---|
 | Consent | A consent screen is shown before the application starts. The accepted consent version is stored in browser `localStorage`. |
-| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password and an abuse-prevention verification step. |
+| Accounts | Users can log in or sign up with a username and password. New accounts require the shared application password, confirmation that the user is at least 13, and an abuse-prevention verification step. |
 | Passwords | Passwords are not recoverable through the client. Users should store them safely. |
 | Sessions | Authentication uses a Secure, HttpOnly cookie; the client restores login through an authenticated session check. |
 | Room access | Users join with a 32-character room code, a room password when required, or an optional join token. |
 | Password rooms | Owners can create rooms protected by a room password. Owners can change the password and manage join tokens. |
 | Ephemeral rooms | Owners can create rooms that expire after 24 hours. These rooms do not expose the normal persistent room-management controls. |
+| Message retention | Messages in password rooms may be retained for up to 24 hours before automatic deletion. Ephemeral rooms do not retain message history. |
 | Join tokens | Room owners can mint, list, and revoke invitation tokens. A valid token can be used instead of the room password where supported. |
 | Messaging | Connected users can exchange real-time messages and view available room history. |
 | Conversation tools | Users can reply to messages, copy message text, mention participants, use basic Markdown-style formatting, open links safely, and view typing indicators. |
@@ -33,7 +34,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, and the shared application password, then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
+For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, the shared application password, and confirm that you are at least 13 years old; then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 

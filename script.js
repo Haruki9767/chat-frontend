@@ -51,6 +51,8 @@ const authPasswordConfirmWrap = document.getElementById('auth-password-confirm-w
 const authPasswordConfirmInput = document.getElementById('auth-password-confirm-input');
 const authAppPasswordWrap = document.getElementById('auth-app-password-wrap');
 const authAppPasswordInput = document.getElementById('auth-app-password-input');
+const authAgeWrap = document.getElementById('auth-age-wrap');
+const authAgeCheckbox = document.getElementById('auth-age-checkbox');
 const authHint = document.getElementById('auth-hint');
 const authSubmitBtn = document.getElementById('auth-submit-btn');
 const authError = document.getElementById('auth-error');
@@ -216,6 +218,7 @@ function setAuthMode(m) {
   authError.textContent = '';
   authPasswordConfirmInput.value = '';
   authAppPasswordInput.value = '';
+  authAgeCheckbox.checked = false;
   if (m === 'login') {
     authLoginBtn.classList.add('mode-active');
     authRegisterBtn.classList.remove('mode-active');
@@ -223,6 +226,7 @@ function setAuthMode(m) {
     authHint.textContent = '';
     authPasswordConfirmWrap.style.display = 'none';
     authAppPasswordWrap.style.display = 'none';
+    authAgeWrap.style.display = 'none';
   } else {
     authRegisterBtn.classList.add('mode-active');
     authLoginBtn.classList.remove('mode-active');
@@ -230,6 +234,7 @@ function setAuthMode(m) {
     authHint.textContent = 'Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
     authPasswordConfirmWrap.style.display = 'flex';
     authAppPasswordWrap.style.display = 'block';
+    authAgeWrap.style.display = 'flex';
   }
 }
 
@@ -246,6 +251,11 @@ authSubmitBtn.addEventListener('click', async () => {
 
   if (authMode === 'register' && password !== passwordConfirmation) {
     authError.textContent = 'Passwords do not match';
+    return;
+  }
+
+  if (authMode === 'register' && !authAgeCheckbox.checked) {
+    authError.textContent = 'You must confirm that you are at least 13 years old';
     return;
   }
 
@@ -282,7 +292,7 @@ authSubmitBtn.addEventListener('click', async () => {
     const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body: JSON.stringify({ username, password, passwordConfirmation, turnstileToken }),
+      body: JSON.stringify({ username, password, passwordConfirmation, ageAttested: authMode === 'register' && authAgeCheckbox.checked, turnstileToken }),
     });
     const data = await res.json();
 
