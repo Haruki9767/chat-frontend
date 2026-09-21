@@ -20,9 +20,6 @@
   --radius-md: 6px;
 }
 
-/* ---- Alternate themes (Settings > Theme) — each stays within the same
-   design world (flat color, no gradients, one accent per screen); only
-   the palette changes, never the structural principles. ---- */
 html[data-theme="dusk"] {
   --ink: #EDEBE4;
   --paper: #17181B;
@@ -51,13 +48,7 @@ html[data-theme="ledger"] {
   --signal-tint: #F0DFCF;
 }
 
-/* ---- Alternate fonts (Settings > Font) — each option sets BOTH --serif
-   and --sans, changing the WHOLE UI's typography (buttons, labels,
-   messages, inputs — not just numeric/identity elements as an earlier
-   version of this system did). Every pairing still respects the two-role
-   split from DESIGN.md (one serif for numeric/identity elements, one
-   sans for everything else) — only WHICH fonts fill those two roles
-   changes, never the underlying structural principle. ---- */
+
 html[data-font="mono"] {
   --serif: ui-monospace, 'IBM Plex Mono', 'SF Mono', Menlo, monospace;
   --sans: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -107,16 +98,12 @@ h3 { font-size: 0.95rem; color: var(--muted); text-transform: none; }
 
 p { margin: 0; }
 
-/* Numeric / identity elements — room codes, account tags, timestamps —
-   always the serif, always tabular figures where supported. See
-   DESIGN.md Principle 1. */
 .numeric, .account-tag, .code-value {
   font-family: var(--serif);
   font-feature-settings: 'tnum' 1, 'lnum' 1;
   font-variant-numeric: tabular-nums lining-nums;
 }
 
-/* ---- Browser surfaces, themed rather than left default ---- */
 ::selection { background: var(--accent); color: var(--paper); }
 ::placeholder { color: #A6A196; }
 :focus-visible {
@@ -129,7 +116,7 @@ input:focus-visible { outline-offset: 0; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* ---- Layout shells ---- */
+
 #auth-view, #room-view, #manage-room-view {
   display: flex;
   flex-direction: column;
@@ -142,7 +129,6 @@ input:focus-visible { outline-offset: 0; }
   padding: 1.75rem 1.5rem;
 }
 
-/* ---- Form elements ---- */
 input {
   font-family: var(--sans);
   font-size: 0.95rem;
@@ -200,7 +186,7 @@ button:active { background: #E9E6DE; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:disabled:hover { background: var(--paper-raised); }
 
-/* Primary action — the ONE accent per screen. See DESIGN.md Principle 2. */
+
 button.primary,
 #auth-submit-btn, #join-btn, #create-btn, #send-btn,
 #manage-change-password-btn, #manage-mint-token-btn,
@@ -217,8 +203,7 @@ button.primary:hover,
   border-color: var(--accent-hover);
 }
 
-/* Destructive actions — outlined, never filled solid, quieter than the
-   accent by design. See DESIGN.md Principle 3 / Components. */
+
 button.danger, #delete-account-btn {
   border-color: var(--signal);
   color: var(--signal);
@@ -233,7 +218,7 @@ button.danger:hover, #delete-account-btn:hover { background: var(--signal-tint);
   margin: 0;
 }
 
-/* ---- Password visibility toggle ---- */
+
 .password-field {
   position: relative;
   display: block;
@@ -281,7 +266,6 @@ button.danger:hover, #delete-account-btn:hover { background: var(--signal-tint);
   color: var(--paper);
 }
 
-/* ---- Account bar ---- */
 #account-bar {
   font-size: 0.78rem;
   color: var(--muted);
@@ -300,7 +284,7 @@ button.danger:hover, #delete-account-btn:hover { background: var(--signal-tint);
   flex-direction: column;
   gap: 0.65rem;
 }
-/* ---- Chat view ---- */
+
 #chat-view {
   display: flex;
   flex-direction: column;
@@ -383,11 +367,7 @@ header {
   flex-shrink: 0;
 }
 
-/* Leave always sits at the far right of its own row; Manage (owner-only,
-   when shown) sits just before it — this is the "wrap Leave below" fix:
-   rather than let the whole header overflow/wrap unpredictably when an
-   owner's extra Manage button doesn't fit, actions get their own
-   dedicated row underneath the room identity row, every time. */
+
 #leave-btn { margin-left: auto; }
 
 #message-area {
@@ -398,8 +378,6 @@ header {
   flex-direction: column;
 }
 
-/* ---- Timestamp grouping — a divider between message clusters, not a
-   repeated stamp on every bubble. ---- */
 .time-divider {
   text-align: center;
   font-family: var(--serif);
@@ -464,7 +442,7 @@ header {
   max-width: 100%;
 }
 
-/* ---- Markdown rendering inside message bubbles ---- */
+
 .bubble code {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 0.85em;
@@ -493,7 +471,6 @@ header {
   font-weight: 600;
 }
 
-/* ---- Typing indicator ---- */
 #typing-indicator {
   font-size: 0.74rem;
   color: var(--muted);
@@ -519,7 +496,6 @@ header {
   #typing-indicator .dots::after { animation: none; content: '...'; }
 }
 
-/* ---- @mention autocomplete ---- */
 #mention-suggestions {
   position: absolute;
   bottom: 100%;
@@ -571,7 +547,7 @@ header {
 }
 #room-type-hint { min-height: 2.2em; }
 
-/* ---- Copy feedback toast (long-press to copy) ---- */
+
 #copy-toast {
   position: fixed;
   bottom: 1.5rem;
@@ -589,7 +565,7 @@ header {
 }
 #copy-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* ---- Owner key modal ---- */
+
 #owner-key-modal {
   position: fixed;
   inset: 0;
@@ -615,7 +591,7 @@ header {
 }
 #owner-key-copy-btn { margin-right: 0.4rem; }
 
-/* ---- Manage room panel ---- */
+
 #manage-body { display: flex; flex-direction: column; gap: 1.1rem; }
 #manage-body section { border-top: 1px solid var(--line); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.55rem; }
 #manage-body section:first-child { border-top: none; padding-top: 0; }
@@ -658,7 +634,7 @@ header {
 .token-use-line .numeric { color: var(--ink); }
 .token-row.revoked .token-use-line .numeric { color: var(--muted); }
 
-/* ---- Settings ---- */
+
 #settings-view {
   display: flex;
   flex-direction: column;
@@ -688,7 +664,7 @@ header {
 #dev-about { font-size: 0.85rem; line-height: 1.6; color: var(--muted); }
 #dev-about a { color: var(--accent); }
 
-/* ---- Loading states ---- */
+
 .spinner {
   display: inline-block;
   width: 1em;
@@ -714,11 +690,10 @@ button.primary .spinner { border-color: rgba(255,255,255,0.35); border-top-color
 }
 #page-loading .spinner { width: 1.5rem; height: 1.5rem; border-width: 2px; border-color: var(--line-strong); border-top-color: var(--accent); }
 
-/* ---- 404 / not-found ---- */
+
 #not-found-view { max-width: 420px; margin: 4rem auto; text-align: left; display: flex; flex-direction: column; gap: 0.75rem; }
 #not-found-view .code-value { font-size: 2.75rem; font-weight: 500; color: var(--muted); }
 
-/* ---- Legal (privacy / terms) ---- */
 #legal-view { max-width: 620px; margin: 1.5rem auto; line-height: 1.65; }
 #legal-view h2 { font-family: var(--serif); font-size: 1.3rem; margin-top: 1.5rem; }
 #legal-view h2:first-of-type { margin-top: 0; }
@@ -740,8 +715,7 @@ button.primary .spinner { border-color: rgba(255,255,255,0.35); border-top-color
 #consent-gate label { display: flex; align-items: flex-start; gap: 0.55rem; font-size: 0.85rem; line-height: 1.5; cursor: pointer; }
 #consent-gate input[type="checkbox"] { width: 1.05rem; height: 1.05rem; margin-top: 0.15rem; accent-color: var(--accent); flex-shrink: 0; }
 
-/* ---- Icons: drawn SVG, one stroke weight, never emoji/unicode standing
-   in for an icon system (see craft-floor.md). ---- */
+
 .icon {
   width: 1em;
   height: 1em;
