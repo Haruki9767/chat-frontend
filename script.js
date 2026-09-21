@@ -200,9 +200,6 @@ async function ensureTurnstileWidget() {
           sitekey: TURNSTILE_SITE_KEY,
           action: 'auth',
           callback: (token) => {
-            // Only auto-submit after the user has explicitly clicked Log In
-            // or Sign Up. A failed request destroys the widget and clears this
-            // flag, so the user must click again before another request.
             if (authVerificationRequested && token) void submitAuth();
           },
           'expired-callback': () => {
@@ -214,7 +211,7 @@ async function ensureTurnstileWidget() {
         });
         return true;
       } catch (error) {
-        console.error('Turnstile widget failed to load:', error);
+        console.error('Verification failed to load:', error);
         return false;
       }
     });
@@ -299,7 +296,7 @@ async function submitAuth() {
     authVerificationRequested = true;
     const widgetReady = await ensureTurnstileWidget();
     if (!widgetReady) {
-      stopAuthVerification('Turnstile could not be loaded. Please try again.');
+      stopAuthVerification('Verification could not be loaded. Please try again.');
     }
     return;
   }
@@ -307,8 +304,8 @@ async function submitAuth() {
   const turnstileToken = getTurnstileToken();
   if (!turnstileToken) {
     authError.textContent = TURNSTILE_SITE_KEY
-      ? 'Please complete the Turnstile verification'
-      : 'Turnstile is not configured (see TURNSTILE_SITE_KEY in script.js) — login/register cannot succeed until it is';
+      ? 'Please complete the verification'
+      : 'Verification is not configured. Please try again after some time.';
     return;
   }
 
@@ -329,7 +326,7 @@ async function submitAuth() {
     const data = await res.json();
 
     if (res.status === 429) {
-      authError.textContent = data.error || 'Too many attempts — please wait.';
+      authError.textContent = data.error || 'Too many attempts. Please try again after some time.';
     } else if (!res.ok || !data.success) {
       authError.textContent = data.error || 'Authentication failed';
     } else {
@@ -343,9 +340,6 @@ async function submitAuth() {
     authSubmissionInFlight = false;
     authSubmitBtn.disabled = false;
     setButtonLoading(authSubmitBtn, false);
-    // Turnstile tokens are single-use. Removing the widget after every
-    // request prevents a failed login/register response from causing the
-    // managed widget to immediately start another verification cycle.
     stopAuthVerification();
   }
 }
@@ -359,11 +353,11 @@ logoutBtn.addEventListener('click', async () => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok && res.status !== 401) {
-      alert(data.error || 'Logout failed. Your server session may still be active.');
+      alert(data.error || 'Logout failed.');
       return;
     }
   } catch {
-    alert('Network error while logging out. Your server session may still be active.');
+    alert('Network error while logging out.');
     return;
   }
   account = null;
@@ -453,7 +447,6 @@ function setRoomMode(m) {
 let createRoomType = 'password';
 typePasswordBtn.addEventListener('click', () => setCreateRoomType('password'));
 typeEphemeralBtn.addEventListener('click', () => setCreateRoomType('ephemeral'));
-// E2EE room creation is intentionally disabled until the client protocol is complete.
 
 const ROOM_TYPE_HINTS = {
   password: 'A standard room, protected by the password you set below. Requires the app password to create.',
@@ -522,12 +515,12 @@ async function createAndJoin() {
     const data = await res.json();
 
     if (res.status === 401 && data.error === 'Not logged in') {
-      roomError.textContent = 'Session expired — please log in again';
+      roomError.textContent = 'Session expired. Please log in again';
       showAuthView();
       return;
     }
     if (res.status === 429) {
-      roomError.textContent = data.error || 'Too many attempts — please wait.';
+      roomError.textContent = data.error || 'Too many attempts — please try again after some time.';
       resetCreateBtn();
       return;
     }
@@ -667,7 +660,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       account = null;
       chatView.style.display = 'none';
       showAuthView();
-      authError.textContent = 'This account was deleted — connection closed.';
+      authError.textContent = 'This account was deleted';
       return;
     }
 
@@ -675,7 +668,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       chatView.style.display = 'none';
       manageRoomView.style.display = 'none';
       showRoomView();
-      roomError.textContent = 'Your room access expired — please rejoin.';
+      roomError.textContent = 'Your room access expired. Please rejoin.';
       if (currentRoom) roomCodeInput.value = currentRoom.roomCode;
       return;
     }
@@ -685,7 +678,7 @@ async function connectWebSocket({ roomCode, roomLabel, roomType, roomPassword, j
       manageRoomView.style.display = 'none';
       showRoomView();
       roomError.textContent = event.code === 4002
-        ? 'This room’s password was changed — enter the new password to rejoin.'
+        ? 'This room’s password was changed. Enter the new password to rejoin.'
         : event.code === 4003
           ? 'This room has expired.'
           : 'This room was deleted.';
