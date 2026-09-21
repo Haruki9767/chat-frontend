@@ -242,7 +242,8 @@ function setAuthMode(m) {
     authLoginBtn.classList.add('mode-active');
     authRegisterBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Log In';
-    authHint.textContent = '';
+    authUsernameInput.placeholder = 'Username#displayTag';
+    authHint.textContent = 'Use the full username#displayTag shown after account creation.';
     authPasswordConfirmWrap.style.display = 'none';
     authAppPasswordWrap.style.display = 'none';
     authAgeWrap.style.display = 'none';
@@ -250,6 +251,7 @@ function setAuthMode(m) {
     authRegisterBtn.classList.add('mode-active');
     authLoginBtn.classList.remove('mode-active');
     authSubmitBtn.textContent = 'Sign Up';
+    authUsernameInput.placeholder = 'Username';
     authHint.textContent = '18+ only. Username: 3-20 chars, letters/numbers/underscore. Password: 8+ chars. There is no password recovery — store it safely.';
     authPasswordConfirmWrap.style.display = 'flex';
     authAppPasswordWrap.style.display = 'block';
@@ -266,6 +268,11 @@ async function submitAuth() {
 
   if (!username || !password) {
     authError.textContent = 'Username and password required';
+    return;
+  }
+
+  if (authMode === 'login' && !/^[a-zA-Z0-9_]{3,20}#[a-f0-9]{4}$/i.test(username)) {
+    authError.textContent = 'Use your full login ID: username#displayTag';
     return;
   }
 
@@ -1459,10 +1466,10 @@ const THEMES = [
   { id: 'ledger', label: 'Sepia' },
 ];
 const FONTS = [
-  { id: 'default', label: 'Newsreader + Inter' },
-  { id: 'mono', label: 'Monospace' },
-  { id: 'classic-serif', label: 'Source Serif' },
-  { id: 'grotesk', label: 'Space Grotesk' },
+  { id: 'default', label: 'Newsreader + Inter', fontFamily: 'Inter, sans-serif' },
+  { id: 'mono', label: 'Monospace', fontFamily: 'IBM Plex Mono, monospace' },
+  { id: 'classic-serif', label: 'Source Serif', fontFamily: 'Source Serif 4, serif' },
+  { id: 'grotesk', label: 'Space Grotesk', fontFamily: 'Space Grotesk, sans-serif' },
   { id: 'lobster', label: 'Lobster', fontFamily: 'Lobster, cursive' },
   { id: 'handlee', label: 'Handlee', fontFamily: 'Handlee, cursive' },
 ];

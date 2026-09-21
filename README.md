@@ -34,7 +34,7 @@ Review the displayed consent information, select the acknowledgement checkbox, a
 
 ### 2. Log in or create an account
 
-For an existing account, enter the username and password and complete the abuse-prevention verification step. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, the shared application password, and confirm that you are at least 18 years old; then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
+For an existing account, enter the full `username#displayTag` login ID shown after account creation, along with the password, and complete the abuse-prevention verification step. A bare username is not accepted for login because multiple accounts may share it. To create an account, switch to **Sign Up**, provide a username, password, matching password confirmation, the shared application password, and confirm that you are at least 18 years old; then complete the verification step. Usernames may be reused; the application distinguishes accounts with the generated `username#displayTag` identity shown in rooms.
 
 Usernames and passwords are validated by the application service. There is no password-reset flow in the current client, so users must retain their credentials securely.
 
