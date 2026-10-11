@@ -321,7 +321,7 @@ async function submitAuth() {
     const res = await apiFetch(`${API_URL}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...extraHeaders },
-      body: JSON.stringify({ username, password, passwordConfirmation, ageAttested: authMode === 'register' && authAgeCheckbox.checked, turnstileToken }),
+      body: JSON.stringify({ username, password, passwordConfirmation, ageAttested: authMode === 'register' && authAgeCheckbox.checked, turnstileToken, website: document.getElementById('auth-website-input')?.value || '' }),
     });
     const data = await res.json();
 
